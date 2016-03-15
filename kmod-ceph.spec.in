@@ -1,0 +1,127 @@
+# Define the kmod package name here.
+%define kmod_name   ceph
+%define ko_name0    libceph
+%define ko_name1    rbd
+%define ko_name2    ceph
+
+%{!?kversion: %define kversion @KVERSION@}
+
+Name:               kmod-%{kmod_name}
+Version:            @RPM_VERSION@
+Release:            @RPM_RELEASE@%{?dist}
+Group:              System Environment/Kernel
+License:            GPLv2
+Summary:            %{kmod_name} kernel module(s)
+Vendor:             ZTE, Corp.
+Packager:           runsisi AT hust.edu.cn
+URL:                http://www.clove.zte.com.cn/
+Source0:            kmod-%{kmod_name}.tar.gz
+ExclusiveArch:      x86_64
+
+%global _use_internal_dependency_generator 0
+Provides:           kernel-modules >= %{kversion}
+Provides:           kmod-%{kmod_name} = %{?epoch:%{epoch}:}%{version}-%{release}
+Requires(post):     /usr/sbin/depmod
+Requires(postun):   /usr/sbin/depmod
+BuildRequires:      redhat-rpm-config, perl, kernel-devel
+
+%description
+This package provides the %{kmod_name} kernel module(s) for ceph. It is built
+for the Linux kernel using the %{_target_cpu} family of processors.
+
+%pre
+rm -f /lib/modules/%{kversion}/kernel/drivers/block/rbd.ko
+rm -rf /lib/modules/%{kversion}/kernel/fs/ceph/
+rm -rf /lib/modules/%{kversion}/kernel/net/ceph/
+
+%post
+echo "Working. This may take some time ..."
+if [ -e "/boot/System.map-%{kversion}" ]; then
+    /usr/sbin/depmod -aeF "/boot/System.map-%{kversion}" "%{kversion}" > /dev/null || :
+fi
+modules=( $(find /lib/modules/%{kversion}/extra/%{kmod_name} | grep '\.ko$') )
+if [ -x "/sbin/weak-modules" ]; then
+    printf '%s\n' "${modules[@]}" | /sbin/weak-modules --add-modules
+fi
+echo "Done."
+
+%preun
+rpm -ql kmod-%{kmod_name}-%{version}-%{release}.x86_64 | grep '\.ko$' > /var/run/kmod-%{kmod_name}-modules
+
+%postun
+echo "Working. This may take some time ..."
+if [ -e "/boot/System.map-%{kversion}" ]; then
+    /usr/sbin/depmod -aeF "/boot/System.map-%{kversion}" "%{kversion}" > /dev/null || :
+fi
+modules=( $(cat /var/run/kmod-%{kmod_name}-modules) )
+rm /var/run/kmod-%{kmod_name}-modules
+if [ -x "/sbin/weak-modules" ]; then
+    printf '%s\n' "${modules[@]}" | /sbin/weak-modules --remove-modules
+fi
+echo "Done."
+
+%files
+%defattr(644,root,root,755)
+/lib/modules/%{kversion}/
+%config /etc/depmod.d/kmod-%{kmod_name}.conf
+
+# Disable the building of the debug package(s).
+%define debug_package %{nil}
+
+%prep
+%setup -q -n kmod-%{kmod_name}
+echo "override %{ko_name0} * weak-updates/%{ko_name0}" >  kmod-%{kmod_name}.conf
+echo "override %{ko_name1} * weak-updates/%{ko_name1}" >> kmod-%{kmod_name}.conf
+echo "override %{ko_name2} * weak-updates/%{ko_name2}" >> kmod-%{kmod_name}.conf
+
+%build
+KSRC=%{_usrsrc}/kernels/%{kversion}
+%{__make} -C "${KSRC}" %{?_smp_mflags} modules M=$PWD
+
+%install
+%{__install} -d %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
+%{__install} -d %{buildroot}%{_sysconfdir}/depmod.d/
+
+%{__install} net/ceph/%{ko_name0}.ko        %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
+%{__install} drivers/block/%{ko_name1}.ko   %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
+%{__install} fs/ceph/%{ko_name2}.ko         %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
+%{__install} kmod-%{kmod_name}.conf         %{buildroot}%{_sysconfdir}/depmod.d/
+
+# Strip the modules(s).
+find %{buildroot} -type f -name \*.ko -exec %{__strip} --strip-debug \{\} \;
+
+# TODO: more work to do about signing
+# Sign the modules(s).
+%if %{?_with_modsign:1}%{!?_with_modsign:0}
+# If the module signing keys are not defined, define them here.
+%{!?privkey: %define privkey %{_sysconfdir}/pki/SECURE-BOOT-KEY.priv}
+%{!?pubkey: %define pubkey %{_sysconfdir}/pki/SECURE-BOOT-KEY.der}
+for module in $(find %{buildroot} -type f -name \*.ko);
+do %{__perl} /usr/src/kernels/%{kversion}/scripts/sign-file \
+    sha256 %{privkey} %{pubkey} $module;
+done
+%endif
+
+%clean
+%{__rm} -rf %{buildroot}
+
+%changelog
+* Wed Aug 17 2016 runsisi <runsisi@hust.edu.cn> - 1.4
+- Revert rbd.ko to kernel-3.10.0-229.20.1.el7
+
+* Fri Aug 12 2016 runsisi <runsisi@hust.edu.cn> - 1.3
+- Revert to kernel-3.10.0-327.28.2.el7
+- Re-add CephFS support
+
+* Fri Aug 5 2016 runsisi <runsisi@hust.edu.cn> - 1.2
+- Remove CephFS support
+- Update to 96b585267f552d4b6a28ea8bd75e5ed03deb6e71
+
+* Mon Jun 6 2016 runsisi <runsisi@hust.edu.cn> - 1.1
+- Update kmod source to af8c34ce6ae32addda3788d54a7e340cad22516b
+
+* Sun May 29 2016 runsisi <runsisi@hust.edu.cn> - 1.0
+- Update kmod source to 7d8eb50290e4edf8de36973728862f73ff0b94bc
+
+* Tue Jan 26 2016 runsisi <runsisi@hust.edu.cn> - 0.94.5.1-0
+- Initial el7 build of the kmod package
