@@ -1006,9 +1006,7 @@ static struct ceph_osd *create_osd(struct ceph_osd_client *osdc, int onum)
 {
 	struct ceph_osd *osd;
 
-	osd = kzalloc(sizeof(*osd), GFP_NOFS);
-	if (!osd)
-		return NULL;
+	osd = kzalloc(sizeof(*osd), GFP_NOIO | __GFP_NOFAIL);
 
 	atomic_set(&osd->o_ref, 1);
 	osd->o_osdc = osdc;
@@ -1459,12 +1457,7 @@ static int __map_request(struct ceph_osd_client *osdc,
 
 	req->r_osd = __lookup_osd(osdc, o);
 	if (!req->r_osd && o >= 0) {
-		err = -ENOMEM;
 		req->r_osd = create_osd(osdc, o);
-		if (!req->r_osd) {
-			list_move(&req->r_req_lru_item, &osdc->req_notarget);
-			goto out;
-		}
 
 		dout("map_request osd %p is osd%d\n", req->r_osd, o);
 		__insert_osd(osdc, req->r_osd);
@@ -1477,7 +1470,6 @@ static int __map_request(struct ceph_osd_client *osdc,
 	__enqueue_request(req);
 	err = 1;   /* osd or pg changed */
 
-out:
 	return err;
 }
 
