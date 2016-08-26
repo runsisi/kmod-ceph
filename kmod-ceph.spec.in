@@ -106,6 +106,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Fri Aug 26 2016 runsisi <runsisi@hust.edu.cn> - 1.5
+- Fix rbd util 100%
+
 * Wed Aug 17 2016 runsisi <runsisi@hust.edu.cn> - 1.4
 - Revert rbd.ko to kernel-3.10.0-229.20.1.el7
 
