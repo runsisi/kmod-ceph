@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.59])
-AC_INIT([kmod-ceph], [1.5], [runsisi@hust.edu.cn])
+AC_INIT([kmod-ceph], [1.6], [runsisi@hust.edu.cn])
 
 KVERSION=`uname -r`
 RPM_VERSION=$(echo $KVERSION | cut -d- -f1)
