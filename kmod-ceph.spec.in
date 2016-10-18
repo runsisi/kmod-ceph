@@ -108,6 +108,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Tue Oct 18 2016 runsisi <runsisi@hust.edu.cn> - 1.7
+- Fix http://tracker.ceph.com/issues/14901
+
 * Thu Sep 8 2016 runsisi <runsisi@hust.edu.cn> - 1.6
 - Obsolete kmod-rbd
 
