@@ -108,6 +108,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Tue Dec 6 2016 runsisi <runsisi@hust.edu.cn> - 229.1.11
+- set single_major default to true
+
 * Mon Nov 21 2016 runsisi <runsisi@hust.edu.cn> - 229.1.10
 - Fixes: connect authorization failure results rbd uitl 100% 
 
