@@ -884,6 +884,8 @@ __lookup_request_ge(struct ceph_osd_client *osdc,
 	return NULL;
 }
 
+// called by
+// __kick_osd_requests
 static void __kick_linger_request(struct ceph_osd_request *req)
 {
 	struct ceph_osd_client *osdc = req->r_osdc;
@@ -895,11 +897,18 @@ static void __kick_linger_request(struct ceph_osd_request *req)
 	 * a re-register dance instead of open-coding.
 	 */
 	ceph_osdc_get_request(req);
+
 	if (!list_empty(&req->r_linger_item))
+	    // erase from osdc->req_linger, req->r_osd->o_linger_requests
 		__unregister_linger_request(osdc, req);
 	else
+	    // erase from osdc->requests, req->r_osd->o_requests, and
+	    // osdc->req_unsent/osdc->req_notarget/osdc->req_lru
 		__unregister_request(osdc, req);
+
+	// insert into osdc->requests
 	__register_request(osdc, req);
+
 	ceph_osdc_put_request(req);
 
 	/*
@@ -912,12 +921,15 @@ static void __kick_linger_request(struct ceph_osd_request *req)
 	req->r_osd = osd;
 
 	dout("%s requeueing %p tid %llu\n", __func__, req, req->r_tid);
+
 	__enqueue_request(req);
 }
 
 /*
  * Resubmit requests pending on the given osd.
  */
+// called by
+// osd_reset, which called by osd_con_ops.fault
 static void __kick_osd_requests(struct ceph_osd_client *osdc,
 				struct ceph_osd *osd)
 {
@@ -927,8 +939,10 @@ static void __kick_osd_requests(struct ceph_osd_client *osdc,
 	int err;
 
 	dout("%s osd%d\n", __func__, osd->o_osd);
+
 	err = __reset_osd(osdc, osd);
 	if (err)
+	    // no requests or linger requests to send
 		return;
 
 	/*
@@ -955,12 +969,15 @@ static void __kick_osd_requests(struct ceph_osd_client *osdc,
 		if (!req->r_linger) {
 			dout("%s requeueing %p tid %llu\n", __func__, req,
 			     req->r_tid);
+
 			list_move_tail(&req->r_req_lru_item, &resend);
+
 			req->r_flags |= CEPH_OSD_FLAG_RETRY;
 		} else {
 			list_move_tail(&req->r_req_lru_item, &resend_linger);
 		}
 	}
+
 	list_splice(&resend, &osdc->req_unsent);
 
 	/*
@@ -969,9 +986,13 @@ static void __kick_osd_requests(struct ceph_osd_client *osdc,
 	 * to req_unsent/o_requests at the end to keep things in tid
 	 * order.
 	 */
+	// inserted by __register_linger_request
 	list_for_each_entry_safe(req, nreq, &osd->o_linger_requests,
 				 r_linger_osd_item) {
+	    // dump stack
+	    // can be on osdc->req_unsent, osdc->req_notarget, or osdc->req_lru
 		WARN_ON(!list_empty(&req->r_req_lru_item));
+
 		__kick_linger_request(req);
 	}
 
@@ -982,6 +1003,8 @@ static void __kick_osd_requests(struct ceph_osd_client *osdc,
 /*
  * If the osd connection drops, we need to resubmit all requests.
  */
+// called by
+// osd_con_ops.fault
 static void osd_reset(struct ceph_connection *con)
 {
 	struct ceph_osd *osd = con->private;
@@ -989,12 +1012,17 @@ static void osd_reset(struct ceph_connection *con)
 
 	if (!osd)
 		return;
+
 	dout("osd_reset osd%d\n", osd->o_osd);
+
 	osdc = osd->o_osdc;
+
 	down_read(&osdc->map_sem);
 	mutex_lock(&osdc->request_mutex);
+
 	__kick_osd_requests(osdc, osd);
 	__send_queued(osdc);
+
 	mutex_unlock(&osdc->request_mutex);
 	up_read(&osdc->map_sem);
 }
@@ -1049,37 +1077,54 @@ static void put_osd(struct ceph_osd *osd)
 /*
  * remove an osd from our map
  */
-static void __remove_osd(struct ceph_osd_client *osdc, struct ceph_osd *osd)
+// called by
+// remove_osd
+static void __remove_osd(struct cekick_requestsph_osd_client *osdc, struct ceph_osd *osd)
 {
 	dout("%s %p osd%d\n", __func__, osd, osd->o_osd);
+
 	WARN_ON(!list_empty(&osd->o_requests));
 	WARN_ON(!list_empty(&osd->o_linger_requests));
 
 	list_del_init(&osd->o_osd_lru);
+
 	rb_erase(&osd->o_node, &osdc->osds);
+
 	RB_CLEAR_NODE(&osd->o_node);
 }
 
+// called by
+// remove_all_osds
+// remove_old_osds
+// __reset_osd
 static void remove_osd(struct ceph_osd_client *osdc, struct ceph_osd *osd)
 {
 	dout("%s %p osd%d\n", __func__, osd, osd->o_osd);
 
 	if (!RB_EMPTY_NODE(&osd->o_node)) {
 		ceph_con_close(&osd->o_con);
+
 		__remove_osd(osdc, osd);
+
 		put_osd(osd);
 	}
 }
 
+// called by
+// ceph_osdc_stop
 static void remove_all_osds(struct ceph_osd_client *osdc)
 {
 	dout("%s %p\n", __func__, osdc);
+
 	mutex_lock(&osdc->request_mutex);
+
 	while (!RB_EMPTY_ROOT(&osdc->osds)) {
 		struct ceph_osd *osd = rb_entry(rb_first(&osdc->osds),
 						struct ceph_osd, o_node);
+
 		remove_osd(osdc, osd);
 	}
+
 	mutex_unlock(&osdc->request_mutex);
 }
 
@@ -1087,9 +1132,11 @@ static void __move_osd_to_lru(struct ceph_osd_client *osdc,
 			      struct ceph_osd *osd)
 {
 	dout("%s %p\n", __func__, osd);
+
 	BUG_ON(!list_empty(&osd->o_osd_lru));
 
 	list_add_tail(&osd->o_osd_lru, &osdc->osd_lru);
+
 	osd->lru_ttl = jiffies + osdc->client->options->osd_idle_ttl;
 }
 
@@ -1100,38 +1147,50 @@ static void maybe_move_osd_to_lru(struct ceph_osd_client *osdc,
 
 	if (list_empty(&osd->o_requests) &&
 	    list_empty(&osd->o_linger_requests))
+	    // no requests or linger requests
 		__move_osd_to_lru(osdc, osd);
 }
 
 static void __remove_osd_from_lru(struct ceph_osd *osd)
 {
 	dout("__remove_osd_from_lru %p\n", osd);
+
 	if (!list_empty(&osd->o_osd_lru))
 		list_del_init(&osd->o_osd_lru);
 }
 
+// called by
+// handle_osds_timeout
 static void remove_old_osds(struct ceph_osd_client *osdc)
 {
 	struct ceph_osd *osd, *nosd;
 
 	dout("__remove_old_osds %p\n", osdc);
+
 	mutex_lock(&osdc->request_mutex);
+
 	list_for_each_entry_safe(osd, nosd, &osdc->osd_lru, o_osd_lru) {
 		if (time_before(jiffies, osd->lru_ttl))
 			break;
+
 		remove_osd(osdc, osd);
 	}
+
 	mutex_unlock(&osdc->request_mutex);
 }
 
 /*
  * reset osd connect
  */
+// called by
+// __kick_osd_requests
+// reset_changed_osds
 static int __reset_osd(struct ceph_osd_client *osdc, struct ceph_osd *osd)
 {
 	struct ceph_entity_addr *peer_addr;
 
 	dout("__reset_osd %p osd%d\n", osd, osd->o_osd);
+
 	if (list_empty(&osd->o_requests) &&
 	    list_empty(&osd->o_linger_requests)) {
 		remove_osd(osdc, osd);
@@ -1145,6 +1204,7 @@ static int __reset_osd(struct ceph_osd_client *osdc, struct ceph_osd *osd)
 
 		dout("osd addr hasn't changed and connection never opened, "
 		     "letting msgr retry\n");
+
 		/* touch each r_stamp for handle_timeout()'s benfit */
 		list_for_each_entry(req, &osd->o_requests, r_osd_item)
 			req->r_stamp = jiffies;
@@ -1153,6 +1213,7 @@ static int __reset_osd(struct ceph_osd_client *osdc, struct ceph_osd *osd)
 	}
 
 	ceph_con_close(&osd->o_con);
+
 	ceph_con_open(&osd->o_con, CEPH_ENTITY_TYPE_OSD, osd->o_osd, peer_addr);
 	osd->o_incarnation++;
 
@@ -1218,9 +1279,14 @@ static void __register_request(struct ceph_osd_client *osdc,
 {
 	req->r_tid = ++osdc->last_tid;
 	req->r_request->hdr.tid = cpu_to_le64(req->r_tid);
+
 	dout("__register_request %p tid %lld\n", req, req->r_tid);
+
+	// insert into osdc->requests
 	__insert_request(osdc, req);
+
 	ceph_osdc_get_request(req);
+
 	osdc->num_requests++;
 	if (osdc->num_requests == 1) {
 		dout(" first request, scheduling timeout\n");
@@ -1231,6 +1297,12 @@ static void __register_request(struct ceph_osd_client *osdc,
 /*
  * called under osdc->request_mutex
  */
+// called by
+// __kick_linger_request
+// __ceph_osdc_start_request
+// handle_reply
+// kick_requests
+// ceph_osdc_cancel_request
 static void __unregister_request(struct ceph_osd_client *osdc,
 				 struct ceph_osd_request *req)
 {
@@ -1241,25 +1313,34 @@ static void __unregister_request(struct ceph_osd_client *osdc,
 	}
 
 	dout("__unregister_request %p tid %lld\n", req, req->r_tid);
+
+	// erase from osdc->requests
 	rb_erase(&req->r_node, &osdc->requests);
 	RB_CLEAR_NODE(&req->r_node);
+
 	osdc->num_requests--;
 
 	if (req->r_osd) {
 		/* make sure the original request isn't in flight. */
 		ceph_msg_revoke(req->r_request);
 
+		// can be on req->r_osd->o_requests
 		list_del_init(&req->r_osd_item);
+
 		maybe_move_osd_to_lru(osdc, req->r_osd);
+
 		if (list_empty(&req->r_linger_osd_item))
 			req->r_osd = NULL;
 	}
 
+	// can be on osdc->req_unsent, osdc->req_notarget, or osdc->req_lru
 	list_del_init(&req->r_req_lru_item);
+
 	ceph_osdc_put_request(req);
 
 	if (osdc->num_requests == 0) {
 		dout(" no requests, canceling timeout\n");
+
 		__cancel_osd_timeout(osdc);
 	}
 }
@@ -1275,14 +1356,20 @@ static void __cancel_request(struct ceph_osd_request *req)
 	}
 }
 
+// called by
+// handle_reply
+// kick_requests
 static void __register_linger_request(struct ceph_osd_client *osdc,
 				    struct ceph_osd_request *req)
 {
 	dout("%s %p tid %llu\n", __func__, req, req->r_tid);
+
 	WARN_ON(!req->r_linger);
 
 	ceph_osdc_get_request(req);
+
 	list_add_tail(&req->r_linger_item, &osdc->req_linger);
+
 	if (req->r_osd)
 		list_add_tail(&req->r_linger_osd_item,
 			      &req->r_osd->o_linger_requests);
@@ -1300,14 +1387,20 @@ static void __unregister_linger_request(struct ceph_osd_client *osdc,
 	}
 
 	dout("%s %p tid %llu\n", __func__, req, req->r_tid);
+
+	// can be on osdc->req_linger
 	list_del_init(&req->r_linger_item);
 
 	if (req->r_osd) {
+	    // can be on req->r_osd->o_linger_requests
 		list_del_init(&req->r_linger_osd_item);
+
 		maybe_move_osd_to_lru(osdc, req->r_osd);
+
 		if (list_empty(&req->r_osd_item))
 			req->r_osd = NULL;
 	}
+
 	ceph_osdc_put_request(req);
 }
 
@@ -1376,6 +1469,9 @@ static int __calc_request_pg(struct ceph_osdmap *osdmap,
 				   &req->r_target_oid, pg_out);
 }
 
+// called by
+// __kick_linger_request
+// __map_request
 static void __enqueue_request(struct ceph_osd_request *req)
 {
 	struct ceph_osd_client *osdc = req->r_osdc;
@@ -1385,6 +1481,7 @@ static void __enqueue_request(struct ceph_osd_request *req)
 
 	if (req->r_osd) {
 		__remove_osd_from_lru(req->r_osd);
+
 		list_add_tail(&req->r_osd_item, &req->r_osd->o_requests);
 		list_move_tail(&req->r_req_lru_item, &osdc->req_unsent);
 	} else {
@@ -1402,6 +1499,9 @@ static void __enqueue_request(struct ceph_osd_request *req)
  *
  * Caller should hold map_sem for read and request_mutex.
  */
+// called by
+// __ceph_osdc_start_request
+// kick_requests
 static int __map_request(struct ceph_osd_client *osdc,
 			 struct ceph_osd_request *req, int force_resend)
 {
@@ -1418,6 +1518,7 @@ static int __map_request(struct ceph_osd_client *osdc,
 		list_move(&req->r_req_lru_item, &osdc->req_notarget);
 		return err;
 	}
+
 	req->r_pgid = pgid;
 
 	num = ceph_calc_pg_acting(osdc->osdmap, pgid, acting, &o);
@@ -1448,6 +1549,8 @@ static int __map_request(struct ceph_osd_client *osdc,
 
 	if (req->r_osd) {
 		__cancel_request(req);
+
+		// can be on req->r_osd->o_requests
 		list_del_init(&req->r_osd_item);
 		list_del_init(&req->r_linger_osd_item);
 		req->r_osd = NULL;
@@ -1466,6 +1569,7 @@ static int __map_request(struct ceph_osd_client *osdc,
 	}
 
 	__enqueue_request(req);
+
 	err = 1;   /* osd or pg changed */
 
 	return err;
@@ -1495,6 +1599,7 @@ static void __send_request(struct ceph_osd_client *osdc,
 	       sizeof(req->r_reassert_version));
 
 	req->r_stamp = jiffies;
+
 	list_move_tail(&req->r_req_lru_item, &osdc->req_lru);
 
 	ceph_msg_get(req->r_request); /* send consumes a ref */
@@ -1526,8 +1631,10 @@ static int __ceph_osdc_start_request(struct ceph_osd_client *osdc,
 	int rc;
 
 	__register_request(osdc, req);
+
 	req->r_sent = 0;
 	req->r_got_reply = 0;
+
 	rc = __map_request(osdc, req, 0);
 	if (rc < 0) {
 		if (nofail) {
@@ -1537,11 +1644,13 @@ static int __ceph_osdc_start_request(struct ceph_osd_client *osdc,
 		} else {
 			__unregister_request(osdc, req);
 		}
+
 		return rc;
 	}
 
 	if (req->r_osd == NULL) {
 		dout("send_request %p no up osds in pg\n", req);
+
 		ceph_monc_request_next_osdmap(&osdc->client->monc);
 	} else {
 		__send_queued(osdc);
@@ -1949,6 +2058,8 @@ static void reset_changed_osds(struct ceph_osd_client *osdc)
  *
  * Caller should hold map_sem for read.
  */
+// called by
+// ceph_osdc_handle_map
 static void kick_requests(struct ceph_osd_client *osdc, bool force_resend,
 			  bool force_resend_writes)
 {
@@ -1960,9 +2071,12 @@ static void kick_requests(struct ceph_osd_client *osdc, bool force_resend,
 
 	dout("kick_requests %s %s\n", force_resend ? " (force resend)" : "",
 		force_resend_writes ? " (force resend writes)" : "");
+
 	mutex_lock(&osdc->request_mutex);
+
 	for (p = rb_first(&osdc->requests); p; ) {
 		req = rb_entry(p, struct ceph_osd_request, r_node);
+
 		p = rb_next(p);
 
 		/*
@@ -1974,30 +2088,45 @@ static void kick_requests(struct ceph_osd_client *osdc, bool force_resend,
 		 * will decide it needs to be sent.
 		 */
 		if (req->r_linger && list_empty(&req->r_linger_item)) {
+
+		    // not on osdc->req_linger, i.e., __register_linger_request has not been called
+
 			dout("%p tid %llu restart on osd%d\n",
 			     req, req->r_tid,
 			     req->r_osd ? req->r_osd->o_osd : -1);
+
 			ceph_osdc_get_request(req);
+
+			// erase from osdc->requests, req->r_osd->o_requests
 			__unregister_request(osdc, req);
+
+			// insert into osdc->req_linger, if req->r_osd is not null then insert
+			// into req->r_osd->o_linger_requests too
 			__register_linger_request(osdc, req);
+
 			ceph_osdc_put_request(req);
+
 			continue;
 		}
 
 		force_resend_req = force_resend ||
 			(force_resend_writes &&
 				req->r_flags & CEPH_OSD_FLAG_WRITE);
+
 		err = __map_request(osdc, req, force_resend_req);
 		if (err < 0)
 			continue;  /* error */
+
 		if (req->r_osd == NULL) {
 			dout("%p tid %llu maps to no osd\n", req, req->r_tid);
+
 			needmap++;  /* request a newer map */
 		} else if (err > 0) {
 			if (!req->r_linger) {
 				dout("%p tid %llu requeued on osd%d\n", req,
 				     req->r_tid,
 				     req->r_osd ? req->r_osd->o_osd : -1);
+
 				req->r_flags |= CEPH_OSD_FLAG_RETRY;
 			}
 		}
@@ -2009,13 +2138,17 @@ static void kick_requests(struct ceph_osd_client *osdc, bool force_resend,
 
 		err = __map_request(osdc, req,
 				    force_resend || force_resend_writes);
+
 		dout("__map_request returned %d\n", err);
+
 		if (err < 0)
 			continue;  /* hrm! */
+
 		if (req->r_osd == NULL || err > 0) {
 			if (req->r_osd == NULL) {
 				dout("lingering %p tid %llu maps to no osd\n",
 				     req, req->r_tid);
+
 				/*
 				 * A homeless lingering request makes
 				 * no sense, as it's job is to keep
@@ -2030,15 +2163,23 @@ static void kick_requests(struct ceph_osd_client *osdc, bool force_resend,
 
 			dout("kicking lingering %p tid %llu osd%d\n", req,
 			     req->r_tid, req->r_osd ? req->r_osd->o_osd : -1);
+
+			// insert into osdc->requests
 			__register_request(osdc, req);
+
+			// erase from osdc->req_linger, and req->r_osd->o_linger_requests if
+			// req->r_osd is not null
 			__unregister_linger_request(osdc, req);
 		}
 	}
+
 	reset_changed_osds(osdc);
+
 	mutex_unlock(&osdc->request_mutex);
 
 	if (needmap) {
 		dout("%d requests for down osds, need new map\n", needmap);
+
 		ceph_monc_request_next_osdmap(&osdc->client->monc);
 	}
 }
