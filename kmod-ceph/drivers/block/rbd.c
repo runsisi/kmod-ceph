@@ -1595,12 +1595,21 @@ static int rbd_obj_request_submit(struct ceph_osd_client *osdc,
 				struct rbd_obj_request *obj_request)
 {
 	dout("%s %p\n", __func__, obj_request);
+
+	// call __ceph_osdc_start_request, __register_request， __map_request,
+	// then __send_queued if has target osd, else do nothing and the new
+	// osdmap will kick the request
 	return ceph_osdc_start_request(osdc, obj_request->osd_req, false);
 }
 
+// called by
+// rbd_obj_request_wait
+// rbd_obj_watch_request_helper
+// rbd_dev_header_unwatch_sync
 static void rbd_obj_request_end(struct rbd_obj_request *obj_request)
 {
 	dout("%s %p\n", __func__, obj_request);
+
 	ceph_osdc_cancel_request(obj_request->osd_req);
 }
 
@@ -1617,6 +1626,7 @@ static int rbd_obj_request_wait(struct rbd_obj_request *obj_request)
 	ret = wait_for_completion_interruptible(&obj_request->completion);
 	if (ret < 0) {
 		dout("%s %p interrupted\n", __func__, obj_request);
+
 		rbd_obj_request_end(obj_request);
 		return ret;
 	}
@@ -1764,10 +1774,16 @@ rbd_img_obj_request_read_callback(struct rbd_obj_request *obj_request)
 	obj_request_done_set(obj_request);
 }
 
+// called by
+// rbd_osd_req_callback
+// rbd_img_obj_parent_read_full_callback
+// rbd_img_obj_exists_callback
+// rbd_img_parent_read_callback
 static void rbd_obj_request_complete(struct rbd_obj_request *obj_request)
 {
 	dout("%s: obj %p cb %p\n", __func__, obj_request,
 		obj_request->callback);
+
 	if (obj_request->callback)
 		obj_request->callback(obj_request);
 	else
@@ -1841,6 +1857,9 @@ static void rbd_osd_stat_callback(struct rbd_obj_request *obj_request)
 	obj_request_done_set(obj_request);
 }
 
+// used by
+// rbd_osd_req_create
+// rbd_osd_req_create_copyup
 static void rbd_osd_req_callback(struct ceph_osd_request *osd_req,
 				struct ceph_msg *msg)
 {
@@ -1900,6 +1919,7 @@ static void rbd_osd_req_callback(struct ceph_osd_request *osd_req,
 	}
 
 	if (obj_request_done_test(obj_request))
+	    // OBJ_REQ_DONE has been set
 		rbd_obj_request_complete(obj_request);
 }
 
@@ -1976,6 +1996,7 @@ static struct ceph_osd_request *rbd_osd_req_create(
 	osd_req->r_priv = obj_request;
 
 	osd_req->r_base_oloc.pool = ceph_file_layout_pg_pool(rbd_dev->layout);
+
 	ceph_oid_set_name(&osd_req->r_base_oid, obj_request->object_name);
 
 	return osd_req;
@@ -2021,6 +2042,7 @@ rbd_osd_req_create_copyup(struct rbd_obj_request *obj_request)
 	osd_req->r_priv = obj_request;
 
 	osd_req->r_base_oloc.pool = ceph_file_layout_pg_pool(rbd_dev->layout);
+
 	ceph_oid_set_name(&osd_req->r_base_oid, obj_request->object_name);
 
 	return osd_req;
@@ -3160,6 +3182,9 @@ static void rbd_watch_cb(u64 ver, u64 notify_id, u8 opcode, void *data)
  * Send a (un)watch request and wait for the ack.  Return a request
  * with a ref held on success or error.
  */
+// called by
+// rbd_dev_header_watch_sync, watch is true
+// rbd_dev_header_unwatch_sync, watch is false
 static struct rbd_obj_request *rbd_obj_watch_request_helper(
 						struct rbd_device *rbd_dev,
 						bool watch)
@@ -3182,11 +3207,14 @@ static struct rbd_obj_request *rbd_obj_watch_request_helper(
 
 	osd_req_op_watch_init(obj_request->osd_req, 0, CEPH_OSD_OP_WATCH,
 			      rbd_dev->watch_event->cookie, 0, watch);
+
 	rbd_osd_req_format_write(obj_request);
 
 	if (watch)
+	    // req->r_linger = 1
 		ceph_osdc_set_request_linger(osdc, obj_request->osd_req);
 
+	// call ceph_osdc_start_request
 	ret = rbd_obj_request_submit(osdc, obj_request);
 	if (ret)
 		goto out;
@@ -3212,6 +3240,8 @@ out:
 /*
  * Initiate a watch request, synchronously.
  */
+// called by
+// rbd_dev_image_probe
 static int rbd_dev_header_watch_sync(struct rbd_device *rbd_dev)
 {
 	struct ceph_osd_client *osdc = &rbd_dev->rbd_client->client->osdc;
@@ -3226,6 +3256,8 @@ static int rbd_dev_header_watch_sync(struct rbd_device *rbd_dev)
 	if (ret < 0)
 		return ret;
 
+	// create rbd_obj_request and its associated ceph_osd_request, flag this
+	// request as a linger request, then submit the request
 	obj_request = rbd_obj_watch_request_helper(rbd_dev, true);
 	if (IS_ERR(obj_request)) {
 		ceph_osdc_cancel_event(rbd_dev->watch_event);
@@ -3249,6 +3281,10 @@ static int rbd_dev_header_watch_sync(struct rbd_device *rbd_dev)
 /*
  * Tear down a watch request, synchronously.
  */
+// called by
+// rbd_dev_image_probe, fail
+// do_rbd_add, fail
+// do_rbd_remove
 static void rbd_dev_header_unwatch_sync(struct rbd_device *rbd_dev)
 {
 	struct rbd_obj_request *obj_request;
@@ -3258,6 +3294,7 @@ static void rbd_dev_header_unwatch_sync(struct rbd_device *rbd_dev)
 
 	rbd_obj_request_end(rbd_dev->watch_request);
 	rbd_obj_request_put(rbd_dev->watch_request);
+
 	rbd_dev->watch_request = NULL;
 
 	obj_request = rbd_obj_watch_request_helper(rbd_dev, false);
@@ -3715,6 +3752,9 @@ static void rbd_dev_update_size(struct rbd_device *rbd_dev)
 	}
 }
 
+// called by
+// rbd_watch_cb
+// rbd_image_refresh
 static int rbd_dev_refresh(struct rbd_device *rbd_dev)
 {
 	u64 mapping_size;
