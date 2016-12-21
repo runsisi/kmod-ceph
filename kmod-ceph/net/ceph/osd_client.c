@@ -900,11 +900,11 @@ static void __kick_linger_request(struct ceph_osd_request *req)
 	ceph_osdc_get_request(req);
 
 	if (!list_empty(&req->r_linger_item))
-	    // registered linger request
+	    // registered linger request, unregister then send
 	    // erase from osdc->req_linger, req->r_osd->o_linger_requests
 		__unregister_linger_request(osdc, req);
 	else
-	    // not yet registered linger request
+	    // not yet registered linger request, resend
 	    // erase from osdc->requests, req->r_osd->o_requests, and
 	    // osdc->req_unsent/osdc->req_notarget/osdc->req_lru
 		__unregister_request(osdc, req);
@@ -2233,7 +2233,9 @@ static void kick_requests(struct ceph_osd_client *osdc, bool force_resend,
 			continue;  /* hrm! */
 
 		if (req->r_osd == NULL || err > 0) {
+
 			// mapped to nowhere or to another osd
+
 			if (req->r_osd == NULL) {
 
 			    // linger req now on osdc->req_notarget
@@ -2256,11 +2258,12 @@ static void kick_requests(struct ceph_osd_client *osdc, bool force_resend,
 			dout("kicking lingering %p tid %llu osd%d\n", req,
 			     req->r_tid, req->r_osd ? req->r_osd->o_osd : -1);
 
-			// re-insert into osdc->requests to tracker all reqs (except registered
+			// re-insert into osdc->requests to track all reqs (except registered
 			// linger reqs)
 			__register_request(osdc, req);
 
-			// the linger req needs to be resend or mapped to nowhere, so unregister it
+			// the linger req needs to be resend or is mapped to nowhere, so
+			// unregister it from linger req lists
 			__unregister_linger_request(osdc, req);
 		}
 	}
