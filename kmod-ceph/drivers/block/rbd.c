@@ -273,7 +273,11 @@ struct rbd_obj_request {
 	u64			xferred;	/* bytes transferred */
 	int			result;
 
+	// only set by rbd_img_request_fill, rbd_img_obj_parent_read_full_callback,
+	// rbd_img_obj_exists_submit
 	rbd_obj_callback_t	callback;
+
+	// it is exclusive to callback
 	struct completion	completion;
 
 	struct kref		kref;
@@ -1456,6 +1460,7 @@ static void obj_request_done_set(struct rbd_obj_request *obj_request)
 
 		if (obj_request_img_data_test(obj_request))
 			rbd_dev = obj_request->img_request->rbd_dev;
+
 		rbd_warn(rbd_dev, "obj_request %p already marked done",
 			obj_request);
 	}
@@ -1811,6 +1816,7 @@ static void rbd_osd_read_callback(struct rbd_obj_request *obj_request)
 	dout("%s: obj %p img %p result %d %llu/%llu\n", __func__,
 		obj_request, img_request, obj_request->result,
 		obj_request->xferred, obj_request->length);
+
 	if (layered && obj_request->result == -ENOENT &&
 			obj_request->img_offset < rbd_dev->parent_overlap)
 		rbd_img_parent_read(obj_request);
@@ -1956,6 +1962,13 @@ static void rbd_osd_req_format_write(struct rbd_obj_request *obj_request)
  * (All rbd data writes are prefixed with an allocation hint op, but
  * technically osd watch is a write request, hence this distinction.)
  */
+// called by
+// rbd_img_request_fill
+// rbd_img_obj_exists_submit
+// rbd_obj_notify_ack_sync
+// rbd_obj_watch_request_helper
+// rbd_obj_method_sync
+// rbd_obj_read_sync
 static struct ceph_osd_request *rbd_osd_req_create(
 					struct rbd_device *rbd_dev,
 					enum obj_operation_type op_type,
@@ -2055,7 +2068,13 @@ static void rbd_osd_req_destroy(struct ceph_osd_request *osd_req)
 }
 
 /* object_name is assumed to be a non-null pointer and NUL-terminated */
-
+// called by
+// rbd_img_request_fill
+// rbd_img_obj_exists_submit
+// rbd_obj_notify_ack_sync
+// rbd_obj_watch_request_helper
+// rbd_obj_method_sync
+// rbd_obj_read_sync
 static struct rbd_obj_request *rbd_obj_request_create(const char *object_name,
 						u64 offset, u64 length,
 						enum obj_request_type type)
@@ -2510,6 +2529,7 @@ static int rbd_img_request_fill(struct rbd_img_request *img_request,
 			goto out_unwind;
 		offset = rbd_segment_offset(rbd_dev, img_offset);
 		length = rbd_segment_length(rbd_dev, img_offset, resid);
+
 		obj_request = rbd_obj_request_create(object_name,
 						offset, length, type);
 		/* object request has its own copy of the object name */
@@ -2911,6 +2931,7 @@ static int rbd_img_obj_exists_submit(struct rbd_obj_request *obj_request)
 						   stat_request);
 	if (!stat_request->osd_req)
 		goto out;
+
 	stat_request->callback = rbd_img_obj_exists_callback;
 
 	osd_req_op_init(stat_request->osd_req, 0, CEPH_OSD_OP_STAT, 0);
@@ -3184,7 +3205,7 @@ static void rbd_watch_cb(u64 ver, u64 notify_id, u8 opcode, void *data)
  */
 // called by
 // rbd_dev_header_watch_sync, watch is true
-// rbd_dev_header_unwatch_sync, watch is false
+// rbd_dev_header_unwatch_sync, watch is false, i.e., unwatch
 static struct rbd_obj_request *rbd_obj_watch_request_helper(
 						struct rbd_device *rbd_dev,
 						bool watch)
@@ -3292,7 +3313,9 @@ static void rbd_dev_header_unwatch_sync(struct rbd_device *rbd_dev)
 	rbd_assert(rbd_dev->watch_event);
 	rbd_assert(rbd_dev->watch_request);
 
+	// cancel the linger req
 	rbd_obj_request_end(rbd_dev->watch_request);
+
 	rbd_obj_request_put(rbd_dev->watch_request);
 
 	rbd_dev->watch_request = NULL;
@@ -3305,6 +3328,7 @@ static void rbd_dev_header_unwatch_sync(struct rbd_device *rbd_dev)
 			 PTR_ERR(obj_request));
 
 	ceph_osdc_cancel_event(rbd_dev->watch_event);
+
 	rbd_dev->watch_event = NULL;
 }
 

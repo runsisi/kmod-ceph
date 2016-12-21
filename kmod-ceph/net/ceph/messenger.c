@@ -2812,6 +2812,7 @@ static void con_work(struct work_struct *work)
 	bool fault;
 
 	mutex_lock(&con->mutex);
+
 	while (true) {
 		int ret;
 
@@ -2858,8 +2859,10 @@ static void con_work(struct work_struct *work)
 
 		break;	/* If we make it to here, we're done */
 	}
+
 	if (fault)
 		con_fault(con);
+
 	mutex_unlock(&con->mutex);
 
 	if (fault)
@@ -2879,6 +2882,7 @@ static void con_fault(struct ceph_connection *con)
 
 	pr_warn("%s%lld %s %s\n", ENTITY_NAME(con->peer_name),
 		ceph_pr_addr(&con->peer_addr.in_addr), con->error_msg);
+
 	con->error_msg = NULL;
 
 	WARN_ON(con->state != CON_STATE_CONNECTING &&
@@ -2909,15 +2913,19 @@ static void con_fault(struct ceph_connection *con)
 	if (list_empty(&con->out_queue) &&
 	    !con_flag_test(con, CON_FLAG_KEEPALIVE_PENDING)) {
 		dout("fault %p setting STANDBY clearing WRITE_PENDING\n", con);
+
 		con_flag_clear(con, CON_FLAG_WRITE_PENDING);
+
 		con->state = CON_STATE_STANDBY;
 	} else {
 		/* retry after a delay. */
 		con->state = CON_STATE_PREOPEN;
+
 		if (con->delay == 0)
 			con->delay = BASE_DELAY_INTERVAL;
 		else if (con->delay < MAX_DELAY_INTERVAL)
 			con->delay *= 2;
+
 		con_flag_set(con, CON_FLAG_BACKOFF);
 		queue_con(con);
 	}
