@@ -108,6 +108,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Thu Dec 22 2016 runsisi <runsisi@hust.edu.cn> - 3.10.0-327.22.2.6
+- merge upstream 3.10.0-514.2.2.el7
+
 * Tue Dec 6 2016 runsisi <runsisi@hust.edu.cn> - 327.22.2.5
 - set single_major default to true
 
