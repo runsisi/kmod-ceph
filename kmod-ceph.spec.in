@@ -16,9 +16,9 @@ Vendor:             ZTE, Corp.
 Packager:           runsisi AT hust.edu.cn
 URL:                http://www.clove.zte.com.cn/
 Source0:            kmod-%{kmod_name}.tar.gz
+Source1:            find-requires.ksyms
 ExclusiveArch:      x86_64
 
-%global _use_internal_dependency_generator 0
 Provides:           kernel-modules >= %{kversion}
 Provides:           kmod-%{kmod_name} = %{?epoch:%{epoch}:}%{version}-%{release}
 Obsoletes:          kmod-rbd
@@ -43,7 +43,7 @@ if [ -e "/boot/System.map-%{kversion}" ]; then
 fi
 modules=( $(find /lib/modules/%{kversion}/extra/%{kmod_name} | grep '\.ko$') )
 if [ -x "/sbin/weak-modules" ]; then
-    printf '%s\n' "${modules[@]}" | /sbin/weak-modules --add-modules
+    printf '%s\n' "${modules[@]}" | /sbin/weak-modules --add-modules --no-initramfs
 fi
 echo "Done."
 
@@ -58,7 +58,7 @@ fi
 modules=( $(cat /var/run/kmod-%{kmod_name}-modules) )
 rm /var/run/kmod-%{kmod_name}-modules
 if [ -x "/sbin/weak-modules" ]; then
-    printf '%s\n' "${modules[@]}" | /sbin/weak-modules --remove-modules
+    printf '%s\n' "${modules[@]}" | /sbin/weak-modules --remove-modules --no-initramfs
 fi
 echo "Done."
 
@@ -70,8 +70,13 @@ echo "Done."
 # Disable the building of the debug package(s).
 %define debug_package %{nil}
 
+# Define the filter.
+%define _use_internal_dependency_generator 0
+%define __find_requires sh %{_builddir}/%{buildsubdir}/filter-requires.sh
+
 %prep
 %setup -q -n kmod-%{kmod_name}
+echo "%{SOURCE1} | %{__sed} -e '/^ksym.*/d'" > filter-requires.sh
 echo "override %{ko_name0} * weak-updates/%{ko_name0}" >  kmod-%{kmod_name}.conf
 echo "override %{ko_name1} * weak-updates/%{ko_name1}" >> kmod-%{kmod_name}.conf
 echo "override %{ko_name2} * weak-updates/%{ko_name2}" >> kmod-%{kmod_name}.conf
