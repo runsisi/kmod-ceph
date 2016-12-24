@@ -113,6 +113,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Sat Dec 24 2016 runsisi <runsisi@hust.edu.cn> - 3.10.0-327.22.2.7
+- Fixes: failed ksym dependencies
+
 * Thu Dec 22 2016 runsisi <runsisi@hust.edu.cn> - 3.10.0-327.22.2.6
 - merge upstream 3.10.0-514.2.2.el7
 
