@@ -21,13 +21,8 @@ modules:
 modules_install:
 	$(MAKE) -C $(BUILD_DIR) M=$(PWD) modules_install
 
-# TODO: more work to do about cleanup
 clean:
-	rm -rf *~ *.o .*.cmd *.mod.c *.ko *.ko.unsigned .depend \
-	.tmp_versions modules.order Module.symvers Module.markers
-	$(MAKE) -C $(PWD)/net/ceph clean
-	$(MAKE) -C $(PWD)/drivers/block clean
-	$(MAKE) -C $(PWD)/fs/ceph clean
+	$(MAKE) -C $(BUILD_DIR) M=$(PWD) clean
 
 .PHONY: modules modules_install clean
 
