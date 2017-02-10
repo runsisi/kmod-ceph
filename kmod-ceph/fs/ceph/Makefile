@@ -23,8 +23,7 @@ modules_install:
 	$(MAKE) -C $(BUILD_DIR) M=$(PWD) modules_install
 
 clean:
-	rm -rf *~ *.o .*.cmd *.mod.c *.ko *.ko.unsigned .depend \
-	.tmp_versions modules.order Module.symvers Module.markers
+	$(MAKE) -C $(BUILD_DIR) M=$(PWD) clean
 
 .PHONY: modules modules_install clean
 
