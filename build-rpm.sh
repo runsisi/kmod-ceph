@@ -23,6 +23,8 @@ kc_prepare_src() {
     tar czf kmod-ceph.tar.gz kmod-ceph/
 
     cp find-requires.ksyms $kc_build_dir/SOURCES/
+    cp eio_cli $kc_build_dir/SOURCES/
+    cp eio_cli.8 $kc_build_dir/SOURCES/
     cp kmod-ceph.tar.gz $kc_build_dir/SOURCES/
     cp kmod-ceph.spec $kc_build_dir/SPECS
 }

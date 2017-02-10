@@ -2,7 +2,11 @@
 %define kmod_name   ceph
 %define ko_name0    libceph
 %define ko_name1    rbd
-%define ko_name2    ceph
+%define ko_name2    ceph 
+%define ko_name3    enhanceio
+%define ko_name4    enhanceio_fifo
+%define ko_name5    enhanceio_lru
+%define ko_name6    enhanceio_rand
 
 %{!?kversion: %define kversion @KVERSION@}
 
@@ -17,6 +21,8 @@ Packager:           runsisi AT hust.edu.cn
 URL:                http://www.clove.zte.com.cn/
 Source0:            kmod-%{kmod_name}.tar.gz
 Source1:            find-requires.ksyms
+Source2:            eio_cli
+Source3:            eio_cli.8
 ExclusiveArch:      x86_64
 
 Provides:           kernel-modules >= %{kversion}
@@ -66,6 +72,8 @@ echo "Done."
 %defattr(644,root,root,755)
 /lib/modules/%{kversion}/
 %config /etc/depmod.d/kmod-%{kmod_name}.conf
+%{_bindir}/
+%{_mandir}/man8/
 
 # Disable the building of the debug package(s).
 %define debug_package %{nil}
@@ -80,6 +88,10 @@ echo "%{SOURCE1} | %{__sed} -e '/^ksym.*/d'" > filter-requires.sh
 echo "override %{ko_name0} * weak-updates/%{ko_name0}" >  kmod-%{kmod_name}.conf
 echo "override %{ko_name1} * weak-updates/%{ko_name1}" >> kmod-%{kmod_name}.conf
 echo "override %{ko_name2} * weak-updates/%{ko_name2}" >> kmod-%{kmod_name}.conf
+echo "override %{ko_name3} * weak-updates/%{ko_name3}" >> kmod-%{kmod_name}.conf
+echo "override %{ko_name4} * weak-updates/%{ko_name4}" >> kmod-%{kmod_name}.conf
+echo "override %{ko_name5} * weak-updates/%{ko_name5}" >> kmod-%{kmod_name}.conf
+echo "override %{ko_name6} * weak-updates/%{ko_name6}" >> kmod-%{kmod_name}.conf
 
 %build
 KSRC=%{_usrsrc}/kernels/%{kversion}
@@ -88,11 +100,19 @@ KSRC=%{_usrsrc}/kernels/%{kversion}
 %install
 %{__install} -d %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
 %{__install} -d %{buildroot}%{_sysconfdir}/depmod.d/
+%{__install} -d %{buildroot}%{_bindir}/
+%{__install} -d %{buildroot}%{_mandir}/man8/
 
 %{__install} net/ceph/%{ko_name0}.ko        %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
 %{__install} drivers/block/%{ko_name1}.ko   %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
 %{__install} fs/ceph/%{ko_name2}.ko         %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
+%{__install} enhanceio/%{ko_name3}.ko       %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
+%{__install} enhanceio/%{ko_name4}.ko       %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
+%{__install} enhanceio/%{ko_name5}.ko       %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
+%{__install} enhanceio/%{ko_name6}.ko       %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/
 %{__install} kmod-%{kmod_name}.conf         %{buildroot}%{_sysconfdir}/depmod.d/
+%{__install} %{SOURCE2}                     %{buildroot}%{_bindir}/
+%{__install} %{SOURCE3}                     %{buildroot}%{_mandir}/man8/
 
 # Strip the modules(s).
 find %{buildroot} -type f -name \*.ko -exec %{__strip} --strip-debug \{\} \;
@@ -113,6 +133,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Fri Feb 10 2017 runsisi <runsisi@hust.edu.cn>
+- add enhanceio
+
 * Thu Jan 5 2017 runsisi <runsisi@hust.edu.cn> - 3.10.0-229.1.12
 - add find-requires.ksyms
 
