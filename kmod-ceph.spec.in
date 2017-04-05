@@ -113,6 +113,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Wed Apr 5 2017 runsisi <runsisi@hust.edu.cn> - 3.10.0-229.1.13
+- merge 3a1d1df except rbd force remove
+
 * Thu Jan 5 2017 runsisi <runsisi@hust.edu.cn> - 3.10.0-229.1.12
 - add find-requires.ksyms
 
