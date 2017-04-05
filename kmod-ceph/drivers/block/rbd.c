@@ -6520,8 +6520,10 @@ static ssize_t do_rbd_remove(struct bus_type *bus,
 		 * Prevent new IO from being queued and wait for existing
 		 * IO to complete/fail.
 		 */
+	    /*
 		blk_mq_freeze_queue(rbd_dev->disk->queue);
 		blk_set_queue_dying(rbd_dev->disk->queue);
+		*/
 	}
 
 	down_write(&rbd_dev->lock_rwsem);
