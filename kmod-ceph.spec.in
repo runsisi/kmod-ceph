@@ -113,6 +113,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Wed Apr 5 2017 runsisi <runsisi@hust.edu.cn> - 3.10.0-327.22.2.8
+- Fixes: merge kernel-3.10.0-514.10.2.el7
+
 * Sat Dec 24 2016 runsisi <runsisi@hust.edu.cn> - 3.10.0-327.22.2.7
 - Fixes: failed ksym dependencies
 
