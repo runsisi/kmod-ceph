@@ -110,6 +110,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Thu Apr 6 2017 runsisi <runsisi@hust.edu.cn>
+- Fixes: weak-modules
+
 * Wed Apr 5 2017 runsisi <runsisi@hust.edu.cn> - 3.10.0-327.22.2.8
 - Fixes: merge kernel-3.10.0-514.10.2.el7
 
