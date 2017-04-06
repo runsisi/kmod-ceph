@@ -74,9 +74,9 @@ echo "Done."
 %prep
 %setup -q -n kmod-%{kmod_name}
 echo "%{SOURCE1} | %{__sed} -e '/^ksym.*/d'" > filter-requires.sh
-echo "override %{ko_name0} * weak-updates/%{ko_name0}" >  kmod-%{kmod_name}.conf
-echo "override %{ko_name1} * weak-updates/%{ko_name1}" >> kmod-%{kmod_name}.conf
-echo "override %{ko_name2} * weak-updates/%{ko_name2}" >> kmod-%{kmod_name}.conf
+echo "override %{ko_name0} * weak-updates/%{kmod_name}" >  kmod-%{kmod_name}.conf
+echo "override %{ko_name1} * weak-updates/%{kmod_name}" >> kmod-%{kmod_name}.conf
+echo "override %{ko_name2} * weak-updates/%{kmod_name}" >> kmod-%{kmod_name}.conf
 
 %build
 KSRC=%{_usrsrc}/kernels/%{kversion}
