@@ -32,9 +32,6 @@ This package provides the %{kmod_name} kernel module(s) for ceph. It is built
 for the Linux kernel using the %{_target_cpu} family of processors.
 
 %pre
-rm -f /lib/modules/%{kversion}/kernel/drivers/block/rbd.ko
-rm -rf /lib/modules/%{kversion}/kernel/fs/ceph/
-rm -rf /lib/modules/%{kversion}/kernel/net/ceph/
 
 %post
 echo "Working. This may take some time ..."
