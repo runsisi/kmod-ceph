@@ -44,5 +44,6 @@ libceph-y := ceph_common.o messenger.o msgpool.o buffer.o pagelist.o \
 	pagevec.o snapshot.o
 
 ccflags-y := -I$(src)/../../include
+CFLAGS_ceph_common.o = -I$(src)/../../include/trace/events
 
 endif

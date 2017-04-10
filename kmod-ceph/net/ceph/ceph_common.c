@@ -27,6 +27,15 @@
 #include <linux/ceph/auth.h>
 #include "crypto.h"
 
+#define CREATE_TRACE_POINTS
+#include "trace/events/kmod_ceph_trace.h"
+
+EXPORT_TRACEPOINT_SYMBOL_GPL(rbd_img_request_submit);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rbd_img_request_complete);
+EXPORT_TRACEPOINT_SYMBOL_GPL(osd_client_submit_request);
+EXPORT_TRACEPOINT_SYMBOL_GPL(osd_client_complete_request);
+EXPORT_TRACEPOINT_SYMBOL_GPL(osd_client_send_request);
+EXPORT_TRACEPOINT_SYMBOL_GPL(osd_client_handle_reply);
 
 /*
  * Module compatibility interface.  For now it doesn't do anything,
