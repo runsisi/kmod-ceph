@@ -110,6 +110,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Tue Apr 11 2017 runsisi <runsisi@hust.edu.cn>
+- Fixes: add tracepoint
+
 * Thu Apr 6 2017 runsisi <runsisi@hust.edu.cn>
 - Fixes: weak-modules
 
