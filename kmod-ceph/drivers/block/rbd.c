@@ -48,6 +48,8 @@
 
 #include "rbd_types.h"
 
+#include "trace/events/kmod_ceph_trace.h"
+
 #define RBD_DEBUG	/* Activate rbd_assert() calls */
 
 /*
@@ -1709,6 +1711,7 @@ static int rbd_obj_request_wait(struct rbd_obj_request *obj_request)
 
 static void rbd_img_request_complete(struct rbd_img_request *img_request)
 {
+	trace_rbd_img_request_complete(img_request);
 
 	dout("%s: img %p\n", __func__, img_request);
 
@@ -3076,7 +3079,10 @@ static int rbd_img_request_submit(struct rbd_img_request *img_request)
 	struct rbd_obj_request *next_obj_request;
 	int ret = 0;
 
-	dout("%s: img %p\n", __func__, img_request);
+	trace_rbd_img_request_submit(img_request, img_request->offset, img_request->length);
+
+	dout("%s: img %p, off: %llu, len: %llu\n", __func__, img_request,
+	        img_request->offset, img_request->length);
 
 	rbd_img_request_get(img_request);
 	for_each_obj_request_safe(img_request, obj_request, next_obj_request) {

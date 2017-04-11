@@ -19,6 +19,8 @@
 #include <linux/ceph/auth.h>
 #include <linux/ceph/pagelist.h>
 
+#include "trace/events/kmod_ceph_trace.h"
+
 #define OSD_OPREPLY_FRONT_LEN	512
 
 static struct kmem_cache	*ceph_osd_request_cache;
@@ -1560,6 +1562,8 @@ static void send_request(struct ceph_osd_request *req)
 {
 	struct ceph_osd *osd = req->r_osd;
 
+	trace_osd_client_send_request(req->r_tid, req->r_linger);
+
 	verify_osd_locked(osd);
 	WARN_ON(osd->o_osd != req->r_t.osd);
 
@@ -1706,6 +1710,8 @@ static void account_request(struct ceph_osd_request *req)
 
 static void submit_request(struct ceph_osd_request *req, bool wrlocked)
 {
+    trace_osd_client_submit_request(req);
+
 	ceph_osdc_get_request(req);
 	account_request(req);
 	__submit_request(req, wrlocked);
@@ -1715,6 +1721,8 @@ static void __finish_request(struct ceph_osd_request *req)
 {
 	struct ceph_osd_client *osdc = req->r_osdc;
 	struct ceph_osd *osd = req->r_osd;
+
+	trace_osd_client_complete_request(req);
 
 	verify_osd_locked(osd);
 	dout("%s req %p tid %llu\n", __func__, req, req->r_tid);
@@ -2312,6 +2320,8 @@ static void send_linger_ping(struct ceph_osd_linger_request *lreq)
 	req->r_priv = linger_get(lreq);
 	req->r_linger = true;
 
+	trace_osd_client_submit_request(req);
+
 	ceph_osdc_get_request(req);
 	account_request(req);
 	req->r_tid = atomic64_inc_return(&osdc->last_tid);
@@ -2814,6 +2824,8 @@ static void handle_reply(struct ceph_osd *osd, struct ceph_msg *msg)
 		dout("%s osd%d tid %llu unknown\n", __func__, osd->o_osd, tid);
 		goto out_unlock_session;
 	}
+
+	trace_osd_client_handle_reply(tid, req->r_linger);
 
 	ret = decode_MOSDOpReply(msg, &m);
 	if (ret) {
