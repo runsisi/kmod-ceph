@@ -110,6 +110,9 @@ done
 %{__rm} -rf %{buildroot}
 
 %changelog
+* Thu Jun 13 2017 runsisi <runsisi@hust.edu.cn>
+- update to 3.10.0-514.26.2
+
 * Mon Apr 10 2017 runsisi <runsisi@hust.edu.cn>
 - Fixes: add tracepoint
 
