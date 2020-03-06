@@ -79,8 +79,7 @@ echo "override %{ko_name1} * weak-updates/%{kmod_name}" >> kmod-%{kmod_name}.con
 echo "override %{ko_name2} * weak-updates/%{kmod_name}" >> kmod-%{kmod_name}.conf
 
 %build
-KSRC=%{_usrsrc}/kernels/%{kversion}
-%{__make} -C "${KSRC}" %{?_smp_mflags} modules M=$PWD
+%{__make}
 
 %install
 %{__install} -d %{buildroot}/lib/modules/%{kversion}/extra/%{kmod_name}/

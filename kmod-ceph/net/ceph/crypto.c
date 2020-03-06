@@ -34,7 +34,9 @@ static int set_secret(struct ceph_crypto_key *key, void *buf)
 		return -ENOTSUPP;
 	}
 
-	WARN_ON(!key->len);
+	if (!key->len)
+		return -EINVAL;
+
 	key->key = kmemdup(buf, key->len, GFP_NOIO);
 	if (!key->key) {
 		ret = -ENOMEM;
@@ -214,7 +216,7 @@ static int ceph_aes_crypt(const struct ceph_crypto_key *key, bool encrypt,
 	SKCIPHER_REQUEST_ON_STACK(req, key->tfm);
 	struct sg_table sgt;
 	struct scatterlist prealloc_sg;
-	char iv[AES_BLOCK_SIZE];
+	char iv[AES_BLOCK_SIZE] __aligned(8);
 	int pad_byte = AES_BLOCK_SIZE - (in_len & (AES_BLOCK_SIZE - 1));
 	int crypt_len = encrypt ? in_len + pad_byte : in_len;
 	int ret;
@@ -342,10 +344,12 @@ struct key_type key_type_ceph = {
 	.destroy	= ceph_key_destroy,
 };
 
-int ceph_crypto_init(void) {
+int __init ceph_crypto_init(void)
+{
 	return register_key_type(&key_type_ceph);
 }
 
-void ceph_crypto_shutdown(void) {
+void ceph_crypto_shutdown(void)
+{
 	unregister_key_type(&key_type_ceph);
 }

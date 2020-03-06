@@ -29,6 +29,9 @@ struct ceph_connection_operations {
 	struct ceph_auth_handshake *(*get_authorizer) (
 				struct ceph_connection *con,
 			       int *proto, int force_new);
+	int (*add_authorizer_challenge)(struct ceph_connection *con,
+					void *challenge_buf,
+					int challenge_buf_len);
 	int (*verify_authorizer_reply) (struct ceph_connection *con);
 	int (*invalidate_authorizer)(struct ceph_connection *con);
 
@@ -42,6 +45,8 @@ struct ceph_connection_operations {
 	struct ceph_msg * (*alloc_msg) (struct ceph_connection *con,
 					struct ceph_msg_header *hdr,
 					int *skip);
+
+	void (*reencode_message) (struct ceph_msg *msg);
 
 	int (*sign_message) (struct ceph_msg *msg);
 	int (*check_message_signature) (struct ceph_msg *msg);
@@ -200,9 +205,8 @@ struct ceph_connection {
 				 attempt for this connection, client */
 	u32 peer_global_seq;  /* peer's global seq for this connection */
 
+	struct ceph_auth_handshake *auth;
 	int auth_retry;       /* true if we need a newer authorizer */
-	void *auth_reply_buf;   /* where to put the authorizer reply */
-	int auth_reply_buf_len;
 
 	struct mutex mutex;
 
