@@ -115,11 +115,9 @@ static int ceph_set_acl(struct dentry *dentry, struct inode *inode,
 	case ACL_TYPE_ACCESS:
 		name = POSIX_ACL_XATTR_ACCESS;
 		if (acl) {
-			ret = posix_acl_equiv_mode(acl, &new_mode);
-			if (ret < 0)
+			ret = posix_acl_update_mode(inode, &new_mode, &acl);
+			if (ret)
 				goto out;
-			if (ret == 0)
-				acl = NULL;
 		}
 		break;
 	case ACL_TYPE_DEFAULT:
@@ -148,9 +146,10 @@ static int ceph_set_acl(struct dentry *dentry, struct inode *inode,
 	}
 
 	if (new_mode != old_mode) {
+		newattrs.ia_ctime = current_fs_time(inode->i_sb);
 		newattrs.ia_mode = new_mode;
 		newattrs.ia_valid = ATTR_MODE;
-		ret = ceph_setattr(dentry, &newattrs);
+		ret = __ceph_setattr(dentry, &newattrs);
 		if (ret)
 			goto out_free;
 	}
@@ -160,7 +159,7 @@ static int ceph_set_acl(struct dentry *dentry, struct inode *inode,
 		if (new_mode != old_mode) {
 			newattrs.ia_mode = old_mode;
 			newattrs.ia_valid = ATTR_MODE;
-			ceph_setattr(dentry, &newattrs);
+			__ceph_setattr(dentry, &newattrs);
 		}
 		goto out_free;
 	}
