@@ -15,6 +15,9 @@ ifeq ($(KERNELRELEASE),)
 
     PWD := $(shell pwd)
 
+    export NOSTDINC_FLAGS
+    NOSTDINC_FLAGS += -I$(PWD)/include
+
 modules:
 	$(MAKE) -C $(BUILD_DIR) M=$(PWD) modules
 

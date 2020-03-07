@@ -15,6 +15,9 @@ ifeq ($(KERNELRELEASE),)
 
     PWD := $(shell pwd)
 
+    export NOSTDINC_FLAGS
+    NOSTDINC_FLAGS += -I$(PWD)/../../include
+
 modules:
 	$(MAKE) -C $(BUILD_DIR) M=$(PWD) modules
 
@@ -43,7 +46,6 @@ libceph-y := ceph_common.o messenger.o msgpool.o buffer.o pagelist.o \
 	ceph_fs.o ceph_strings.o ceph_hash.o \
 	pagevec.o snapshot.o
 
-ccflags-y := -I$(src)/../../include
-CFLAGS_ceph_common.o = -I$(src)/../../include/trace/events
+#ccflags-y := -I$(src)/../../include
 
 endif
