@@ -48,6 +48,8 @@
 
 #include "rbd_types.h"
 
+#include <generated/uapi/linux/version.h>
+
 #define RBD_DEBUG	/* Activate rbd_assert() calls */
 
 /*
@@ -4470,7 +4472,11 @@ static int rbd_init_request(struct blk_mq_tag_set *set, struct request *rq,
 
 static struct blk_mq_ops rbd_mq_ops = {
 	.queue_rq	= rbd_queue_rq,
-	.init_request	= rbd_init_request,
+#if RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,2) && \
+		RHEL_RELEASE_CODE <= RHEL_RELEASE_VERSION(7,4)
+	.map_queue  = blk_mq_map_queue,
+#endif
+	.init_request	= (init_request_fn*)rbd_init_request,
 };
 
 static int rbd_init_disk(struct rbd_device *rbd_dev)
