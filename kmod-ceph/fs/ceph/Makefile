@@ -15,6 +15,9 @@ ifeq ($(KERNELRELEASE),)
 
     PWD := $(shell pwd)
 
+    export NOSTDINC_FLAGS
+    NOSTDINC_FLAGS += -I$(PWD)/../../include
+
 modules:
 	echo $(PWD)
 	$(MAKE) -C $(BUILD_DIR) M=$(PWD) modules
@@ -40,6 +43,6 @@ ceph-y := super.o inode.o dir.o file.o locks.o addr.o ioctl.o \
 
 ceph-y += acl.o
 
-ccflags-y := -I$(src)/../../include
+#ccflags-y := -I$(src)/../../include
 
 endif
