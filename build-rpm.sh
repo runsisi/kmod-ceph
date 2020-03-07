@@ -9,9 +9,7 @@ trap '{ kc_cleanup; }' EXIT
 
 kc_prepare_khdrs() {
     (
-    cd /usr/src/kernels/$(uname -r)/include/
-    sudo rm -rf linux/{ceph,crush}
-    sudo rm -f keys/ceph-type.h
+        true
     )
 }
 
@@ -52,7 +50,8 @@ kc_prepare() {
 }
 
 kc_build_rpm() {
-    rpmbuild --define "_topdir $kc_build_dir" -ba kmod-ceph.spec
+    DIST=$(rpm --eval %{?dist} | sed 's/.centos//')
+    rpmbuild --define "_topdir $kc_build_dir" -ba --define "dist ${DIST}" kmod-ceph.spec
 }
 
 kc_upload_rpm() {
