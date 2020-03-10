@@ -16,6 +16,7 @@ ifeq ($(KERNELRELEASE),)
     PWD := $(shell pwd)
 
     export NOSTDINC_FLAGS
+    NOSTDINC_FLAGS += -I$(PWD)/../../arch/x86/include
     NOSTDINC_FLAGS += -I$(PWD)/../../include
 
 modules:
@@ -36,14 +37,15 @@ else
 
 obj-m := ceph.o
 
-mmu-y := ../../mm/util.o
+deps-y := ../../mm/util.o ../../fs/fs_parser.o ../../fs/fs_context.o
 
 ceph-y := super.o inode.o dir.o file.o locks.o addr.o ioctl.o \
-	export.o caps.o snap.o xattr.o quota.o \
+	export.o caps.o snap.o xattr.o quota.o io.o \
 	mds_client.o mdsmap.o strings.o ceph_frag.o \
-	debugfs.o $(mmu-y)
+	debugfs.o util.o $(deps-y)
 
-ceph-y += acl.o
+ceph-$(CONFIG_FSCACHE) += cache.o
+ceph-$(CONFIG_FS_POSIX_ACL) += acl.o
 
 #ccflags-y := -I$(src)/../../include
 

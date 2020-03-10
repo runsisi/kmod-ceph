@@ -16,6 +16,7 @@ ifeq ($(KERNELRELEASE),)
     PWD := $(shell pwd)
 
     export NOSTDINC_FLAGS
+    NOSTDINC_FLAGS += -I$(PWD)/arch/x86/include
     NOSTDINC_FLAGS += -I$(PWD)/include
 
 modules:
@@ -33,6 +34,6 @@ else
 
 # Called from kernel build system -- just declare the module(s).
 
-obj-y := net/ceph/ drivers/block/ fs/ceph/
+obj-y := net/ceph/ drivers/block/ #fs/ceph/
 
 endif

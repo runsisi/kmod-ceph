@@ -16,6 +16,7 @@ ifeq ($(KERNELRELEASE),)
     PWD := $(shell pwd)
 
     export NOSTDINC_FLAGS
+    NOSTDINC_FLAGS += -I$(PWD)/../../arch/x86/include
     NOSTDINC_FLAGS += -I$(PWD)/../../include
 
 modules:
@@ -35,6 +36,12 @@ else
 # Called from kernel build system -- just declare the module(s).
 
 obj-m := rbd.o
+
+deps-y := ../../mm/util.o ../../block/blk-core.o \
+	../../fs/fs_parser.o ../../fs/fs_context.o
+deps-$(CONFIG_LOCKDEP) += ../../kernel/locking/lockdep.o
+
+rbd-y := _rbd.o $(deps-y)
 
 #ccflags-y := -I$(src)/../../include
 

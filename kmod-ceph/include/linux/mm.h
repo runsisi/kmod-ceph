@@ -2,6 +2,7 @@
 #define _KC_LINUX_MM_H
 
 #include_next <linux/mm.h>
+#include <linux/overflow.h>
 
 #ifdef __KERNEL__
 

@@ -16,6 +16,7 @@ ifeq ($(KERNELRELEASE),)
     PWD := $(shell pwd)
 
     export NOSTDINC_FLAGS
+    NOSTDINC_FLAGS += -I$(PWD)/../../arch/x86/include
     NOSTDINC_FLAGS += -I$(PWD)/../../include
 
 modules:
@@ -35,16 +36,21 @@ else
 
 obj-m := libceph.o
 
+deps-y := ../../mm/util.o ../../kernel/time/time.o \
+	../../fs/fs_parser.o ../../fs/fs_context.o \
+	../../lib/refcount.o
+
 libceph-y := ceph_common.o messenger.o msgpool.o buffer.o pagelist.o \
-	mon_client.o \
+	mon_client.o decode.o \
 	cls_lock_client.o \
 	osd_client.o osdmap.o crush/crush.o crush/mapper.o crush/hash.o \
+	striper.o \
 	debugfs.o \
 	auth.o auth_none.o \
 	crypto.o armor.o \
 	auth_x.o \
-	ceph_fs.o ceph_strings.o ceph_hash.o \
-	pagevec.o snapshot.o string_table.o
+	ceph_strings.o ceph_hash.o \
+	pagevec.o snapshot.o string_table.o $(deps-y)
 
 #ccflags-y := -I$(src)/../../include
 

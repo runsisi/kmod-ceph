@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 
 #include <linux/ceph/ceph_debug.h>
 
@@ -8,8 +9,10 @@
 #include <crypto/aes.h>
 #include <crypto/skcipher.h>
 #include <linux/key-type.h>
+#include <linux/sched/mm.h>
 
 #include <keys/ceph-type.h>
+#include <keys/user-type.h>
 #include <linux/ceph/decode.h>
 #include "crypto.h"
 
@@ -133,8 +136,10 @@ void ceph_crypto_key_destroy(struct ceph_crypto_key *key)
 	if (key) {
 		kfree(key->key);
 		key->key = NULL;
-		crypto_free_skcipher(key->tfm);
-		key->tfm = NULL;
+		if (key->tfm) {
+			crypto_free_skcipher(key->tfm);
+			key->tfm = NULL;
+		}
 	}
 }
 
@@ -330,7 +335,8 @@ static int ceph_key_match(const struct key *key, const void *description)
 	return strcmp(key->description, description) == 0;
 }
 
-static void ceph_key_destroy(struct key *key) {
+static void ceph_key_destroy(struct key *key)
+{
 	struct ceph_crypto_key *ckey = key->payload.data;
 
 	ceph_crypto_key_destroy(ckey);
