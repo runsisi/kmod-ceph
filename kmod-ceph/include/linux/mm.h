@@ -2,8 +2,11 @@
 #define _KC_LINUX_MM_H
 
 #include_next <linux/mm.h>
+#include <linux/overflow.h>
 
 #ifdef __KERNEL__
+
+#define lru_to_page(head) (list_entry((head)->prev, struct page, lru))
 
 extern void *kvmalloc_node(size_t size, gfp_t flags, int node);
 static inline void *kvmalloc(size_t size, gfp_t flags)
@@ -30,6 +33,13 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 static inline void *kvcalloc(size_t n, size_t size, gfp_t flags)
 {
 	return kvmalloc_array(n, size, flags | __GFP_ZERO);
+}
+
+static inline int vmf_error(int err)
+{
+	if (err == -ENOMEM)
+		return VM_FAULT_OOM;
+	return VM_FAULT_SIGBUS;
 }
 
 #endif /* __KERNEL__ */

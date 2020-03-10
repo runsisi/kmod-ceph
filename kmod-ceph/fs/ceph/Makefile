@@ -16,6 +16,7 @@ ifeq ($(KERNELRELEASE),)
     PWD := $(shell pwd)
 
     export NOSTDINC_FLAGS
+    NOSTDINC_FLAGS += -I$(PWD)/../../arch/x86/include
     NOSTDINC_FLAGS += -I$(PWD)/../../include
 
 modules:
@@ -36,15 +37,27 @@ else
 
 obj-m := ceph.o
 
-mmu-y := ../../mm/util.o
+deps-y := ../../mm/util.o ../../fs/fs_parser.o ../../fs/fs_context.o \
+	../../fs/inode.o ../../fs/dcache.o ../../fs/ioctl.o \
+	../../fs/super.o ../../fs/posix_acl.o \
+	../../lib/errseq.o ../../lib/refcount.o ../../lib/iov_iter.o \
+	../../mm/backing-dev.o
 
 ceph-y := super.o inode.o dir.o file.o locks.o addr.o ioctl.o \
-	export.o caps.o snap.o xattr.o quota.o \
+	export.o caps.o snap.o xattr.o quota.o io.o \
 	mds_client.o mdsmap.o strings.o ceph_frag.o \
-	debugfs.o $(mmu-y)
+	debugfs.o util.o $(deps-y)
 
+ifdef CONFIG_FSCACHE
+ccflags-y += -DCONFIG_CEPH_FSCACHE
+ceph-y += cache.o
+endif
+
+ifdef CONFIG_FS_POSIX_ACL
+ccflags-y += -DCONFIG_CEPH_FS_POSIX_ACL
 ceph-y += acl.o
+endif
 
-#ccflags-y := -I$(src)/../../include
+ccflags-y += -DCONFIG_CEPH_LIB_PRETTYDEBUG
 
 endif
