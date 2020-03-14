@@ -1,3 +1,16 @@
 /.cproject
 /.project
 /.settings/
+
+/output/
+
+*.mod
+*.mod.c
+
+*.o
+*.o.cmd
+*.ko
+*.ko.cmd
+
+Module.symvers
+modules.order
