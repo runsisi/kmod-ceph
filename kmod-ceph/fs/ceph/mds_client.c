@@ -9,7 +9,6 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/ratelimit.h>
-#include <linux/bits.h>
 
 #include "super.h"
 #include "mds_client.h"
@@ -1716,7 +1715,7 @@ static bool drop_negative_children(struct dentry *dentry)
 		goto out;
 
 	spin_lock(&dentry->d_lock);
-	list_for_each_entry(child, &dentry->d_subdirs, d_child) {
+	list_for_each_entry(child, &dentry->d_subdirs, d_u.d_child) {
 		if (d_really_is_positive(child)) {
 			all_negative = false;
 			break;
@@ -2108,7 +2107,7 @@ ceph_mdsc_create_request(struct ceph_mds_client *mdsc, int op, int mode)
 	init_completion(&req->r_safe_completion);
 	INIT_LIST_HEAD(&req->r_unsafe_item);
 
-	ktime_get_coarse_real_ts64(&req->r_stamp);
+	req->r_stamp = timespec_to_timespec64(current_fs_time(mdsc->fsc->sb));
 
 	req->r_op = op;
 	req->r_direct_mode = mode;
@@ -3942,7 +3941,7 @@ static void handle_lease(struct ceph_mds_client *mdsc,
 		WARN_ON(1);
 		goto release;  /* hrm... */
 	}
-	dname.hash = full_name_hash(parent, dname.name, dname.len);
+	dname.hash = full_name_hash(dname.name, dname.len);
 	dentry = d_lookup(parent, &dname);
 	dput(parent);
 	if (!dentry)
@@ -4226,8 +4225,8 @@ int ceph_mdsc_init(struct ceph_fs_client *fsc)
 	init_rwsem(&mdsc->pool_perm_rwsem);
 	mdsc->pool_perm_tree = RB_ROOT;
 
-	strscpy(mdsc->nodename, utsname()->nodename,
-		sizeof(mdsc->nodename));
+	strncpy(mdsc->nodename, utsname()->nodename,
+		sizeof(mdsc->nodename) - 1);
 	return 0;
 }
 

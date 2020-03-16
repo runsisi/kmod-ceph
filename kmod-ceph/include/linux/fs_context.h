@@ -5,8 +5,8 @@
  * Written by David Howells (dhowells@redhat.com)
  */
 
-#ifndef _LINUX_FS_CONTEXT_H
-#define _LINUX_FS_CONTEXT_H
+#ifndef _KC_LINUX_FS_CONTEXT_H
+#define _KC_LINUX_FS_CONTEXT_H
 
 #include <linux/kernel.h>
 #include <linux/refcount.h>
@@ -120,58 +120,10 @@ struct fs_context_operations {
 	int (*reconfigure)(struct fs_context *fc);
 };
 
-/*
- * fs_context manipulation functions.
- */
-extern struct fs_context *fs_context_for_mount(struct file_system_type *fs_type,
-						unsigned int sb_flags);
-extern struct fs_context *fs_context_for_reconfigure(struct dentry *dentry,
-						unsigned int sb_flags,
-						unsigned int sb_flags_mask);
-extern struct fs_context *fs_context_for_submount(struct file_system_type *fs_type,
-						struct dentry *reference);
-
-extern struct fs_context *vfs_dup_fs_context(struct fs_context *fc);
 extern int vfs_parse_fs_param(struct fs_context *fc, struct fs_parameter *param);
 extern int vfs_parse_fs_string(struct fs_context *fc, const char *key,
 			       const char *value, size_t v_size);
 extern int generic_parse_monolithic(struct fs_context *fc, void *data);
-extern int vfs_get_tree(struct fs_context *fc);
-extern void put_fs_context(struct fs_context *fc);
-
-/*
- * sget() wrappers to be called from the ->get_tree() op.
- */
-enum vfs_get_super_keying {
-	vfs_get_single_super,	/* Only one such superblock may exist */
-	vfs_get_single_reconf_super, /* As above, but reconfigure if it exists */
-	vfs_get_keyed_super,	/* Superblocks with different s_fs_info keys may exist */
-	vfs_get_independent_super, /* Multiple independent superblocks may exist */
-};
-extern int vfs_get_super(struct fs_context *fc,
-			 enum vfs_get_super_keying keying,
-			 int (*fill_super)(struct super_block *sb,
-					   struct fs_context *fc));
-
-extern int get_tree_nodev(struct fs_context *fc,
-			 int (*fill_super)(struct super_block *sb,
-					   struct fs_context *fc));
-extern int get_tree_single(struct fs_context *fc,
-			 int (*fill_super)(struct super_block *sb,
-					   struct fs_context *fc));
-extern int get_tree_single_reconf(struct fs_context *fc,
-			 int (*fill_super)(struct super_block *sb,
-					   struct fs_context *fc));
-extern int get_tree_keyed(struct fs_context *fc,
-			 int (*fill_super)(struct super_block *sb,
-					   struct fs_context *fc),
-			 void *key);
-
-extern int get_tree_bdev(struct fs_context *fc,
-			       int (*fill_super)(struct super_block *sb,
-						 struct fs_context *fc));
-
-extern const struct file_operations fscontext_fops;
 
 /*
  * Mount error, warning and informational message logging.  This structure is
@@ -241,4 +193,4 @@ void logfc(struct fc_log *log, const char *prefix, char level, const char *fmt, 
 #define inval_plog(p, fmt, ...) (error_plog(p, fmt, ## __VA_ARGS__), -EINVAL)
 #define invalfc(fc, fmt, ...) (errorfc(fc, fmt, ## __VA_ARGS__), -EINVAL)
 
-#endif /* _LINUX_FS_CONTEXT_H */
+#endif /* _KC_LINUX_FS_CONTEXT_H */

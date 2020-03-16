@@ -96,7 +96,10 @@ static int ceph_lock_message(u8 lock_type, u16 operation, struct inode *inode,
 	else
 		length = fl->fl_end - fl->fl_start + 1;
 
-	owner = secure_addr(fl->fl_owner);
+	if (lock_type == CEPH_LOCK_FCNTL)
+		owner = secure_addr(fl->fl_owner);
+	else
+		owner = secure_addr(fl->fl_file);
 
 	dout("ceph_lock_message: rule: %d, op: %d, owner: %llx, pid: %llu, "
 	     "start: %llu, length: %llu, wait: %d, type: %d\n", (int)lock_type,
@@ -240,6 +243,15 @@ int ceph_lock(struct file *file, int cmd, struct file_lock *fl)
 	spin_lock(&ci->i_ceph_lock);
 	if (ci->i_ceph_flags & CEPH_I_ERROR_FILELOCK) {
 		err = -EIO;
+	} else if (op == CEPH_MDS_OP_SETFILELOCK) {
+		/*
+		 * increasing i_filelock_ref closes race window between
+		 * handling request reply and adding file_lock struct to
+		 * inode. Otherwise, i_auth_cap may get trimmed in the
+		 * window. Caller function will decrease the counter.
+		 */
+		fl->fl_ops = &ceph_fl_lock_ops;
+		atomic_inc(&ci->i_filelock_ref);
 	}
 	spin_unlock(&ci->i_ceph_lock);
 	if (err < 0) {
@@ -293,6 +305,10 @@ int ceph_flock(struct file *file, int cmd, struct file_lock *fl)
 	spin_lock(&ci->i_ceph_lock);
 	if (ci->i_ceph_flags & CEPH_I_ERROR_FILELOCK) {
 		err = -EIO;
+	} else {
+		/* see comment in ceph_lock */
+		fl->fl_ops = &ceph_fl_lock_ops;
+		atomic_inc(&ci->i_filelock_ref);
 	}
 	spin_unlock(&ci->i_ceph_lock);
 	if (err < 0) {
@@ -332,20 +348,18 @@ int ceph_flock(struct file *file, int cmd, struct file_lock *fl)
 void ceph_count_locks(struct inode *inode, int *fcntl_count, int *flock_count)
 {
 	struct file_lock *lock;
-	struct file_lock_context *ctx;
 
 	*fcntl_count = 0;
 	*flock_count = 0;
 
-	ctx = inode->i_flctx;
-	if (ctx) {
-		spin_lock(&ctx->flc_lock);
-		list_for_each_entry(lock, &ctx->flc_posix, fl_list)
+	spin_lock(&inode->i_lock);
+	for (lock = inode->i_flock; lock != NULL; lock = lock->fl_next) {
+		if (lock->fl_flags & FL_POSIX)
 			++(*fcntl_count);
-		list_for_each_entry(lock, &ctx->flc_flock, fl_list)
+		else if (lock->fl_flags & FL_FLOCK)
 			++(*flock_count);
-		spin_unlock(&ctx->flc_lock);
 	}
+	spin_unlock(&inode->i_lock);
 	dout("counted %d flock locks and %d fcntl locks\n",
 	     *flock_count, *fcntl_count);
 }
@@ -361,7 +375,10 @@ static int lock_to_ceph_filelock(struct file_lock *lock,
 	cephlock->length = cpu_to_le64(lock->fl_end - lock->fl_start + 1);
 	cephlock->client = cpu_to_le64(0);
 	cephlock->pid = cpu_to_le64((u64)lock->fl_pid);
-	cephlock->owner = cpu_to_le64(secure_addr(lock->fl_owner));
+	if (lock->fl_flags & FL_POSIX)
+		cephlock->owner = cpu_to_le64(secure_addr(lock->fl_owner));
+	else
+		cephlock->owner = cpu_to_le64(secure_addr(lock->fl_file));
 
 	switch (lock->fl_type) {
 	case F_RDLCK:
@@ -391,7 +408,6 @@ int ceph_encode_locks_to_buffer(struct inode *inode,
 				int num_fcntl_locks, int num_flock_locks)
 {
 	struct file_lock *lock;
-	struct file_lock_context *ctx = inode->i_flctx;
 	int err = 0;
 	int seen_fcntl = 0;
 	int seen_flock = 0;
@@ -400,34 +416,35 @@ int ceph_encode_locks_to_buffer(struct inode *inode,
 	dout("encoding %d flock and %d fcntl locks\n", num_flock_locks,
 	     num_fcntl_locks);
 
-	if (!ctx)
-		return 0;
-
-	spin_lock(&ctx->flc_lock);
-	list_for_each_entry(lock, &ctx->flc_posix, fl_list) {
-		++seen_fcntl;
-		if (seen_fcntl > num_fcntl_locks) {
-			err = -ENOSPC;
-			goto fail;
+	spin_lock(&inode->i_lock);
+	for (lock = inode->i_flock; lock != NULL; lock = lock->fl_next) {
+		if (lock->fl_flags & FL_POSIX) {
+			++seen_fcntl;
+			if (seen_fcntl > num_fcntl_locks) {
+				err = -ENOSPC;
+				goto fail;
+			}
+			err = lock_to_ceph_filelock(lock, &flocks[l]);
+			if (err)
+				goto fail;
+			++l;
 		}
-		err = lock_to_ceph_filelock(lock, &flocks[l]);
-		if (err)
-			goto fail;
-		++l;
 	}
-	list_for_each_entry(lock, &ctx->flc_flock, fl_list) {
-		++seen_flock;
-		if (seen_flock > num_flock_locks) {
-			err = -ENOSPC;
-			goto fail;
+	for (lock = inode->i_flock; lock != NULL; lock = lock->fl_next) {
+		if (lock->fl_flags & FL_FLOCK) {
+			++seen_flock;
+			if (seen_flock > num_flock_locks) {
+				err = -ENOSPC;
+				goto fail;
+			}
+			err = lock_to_ceph_filelock(lock, &flocks[l]);
+			if (err)
+				goto fail;
+			++l;
 		}
-		err = lock_to_ceph_filelock(lock, &flocks[l]);
-		if (err)
-			goto fail;
-		++l;
 	}
 fail:
-	spin_unlock(&ctx->flc_lock);
+	spin_unlock(&inode->i_lock);
 	return err;
 }
 

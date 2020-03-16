@@ -1109,7 +1109,7 @@ retry:
 		dirty = __ceph_mark_dirty_caps(ci, CEPH_CAP_XATTR_EXCL,
 					       &prealloc_cf);
 		ci->i_xattrs.dirty = true;
-		inode->i_ctime = current_time(inode);
+		inode->i_ctime = current_fs_time(inode->i_sb);
 	}
 
 	spin_unlock(&ci->i_ceph_lock);
@@ -1152,23 +1152,23 @@ out:
 	return err;
 }
 
-static int ceph_get_xattr_handler(const struct xattr_handler *handler,
-				  struct dentry *dentry, struct inode *inode,
-				  const char *name, void *value, size_t size)
+static int ceph_get_xattr_handler(
+				  struct dentry *dentry,
+				  const char *name, void *value, size_t size, int handler_flags)
 {
 	if (!ceph_is_valid_xattr(name))
 		return -EOPNOTSUPP;
-	return __ceph_getxattr(inode, name, value, size);
+	return __ceph_getxattr(d_inode(dentry), name, value, size);
 }
 
-static int ceph_set_xattr_handler(const struct xattr_handler *handler,
-				  struct dentry *unused, struct inode *inode,
+static int ceph_set_xattr_handler(
+				  struct dentry *dentry,
 				  const char *name, const void *value,
-				  size_t size, int flags)
+				  size_t size, int flags, int handler_flags)
 {
 	if (!ceph_is_valid_xattr(name))
 		return -EOPNOTSUPP;
-	return __ceph_setxattr(inode, name, value, size, flags);
+	return __ceph_setxattr(d_inode(dentry), name, value, size, flags);
 }
 
 static const struct xattr_handler ceph_other_xattr_handler = {
@@ -1289,8 +1289,8 @@ void ceph_release_acl_sec_ctx(struct ceph_acl_sec_ctx *as_ctx)
  */
 const struct xattr_handler *ceph_xattr_handlers[] = {
 #ifdef CONFIG_CEPH_FS_POSIX_ACL
-	&posix_acl_access_xattr_handler,
-	&posix_acl_default_xattr_handler,
+	&ceph_xattr_acl_access_handler,
+	&ceph_xattr_acl_default_handler,
 #endif
 	&ceph_other_xattr_handler,
 	NULL,

@@ -137,8 +137,7 @@ static int ceph_set_page_dirty(struct page *page)
  * dirty page counters appropriately.  Only called if there is private
  * data on the page.
  */
-static void ceph_invalidatepage(struct page *page, unsigned int offset,
-				unsigned int length)
+static void ceph_invalidatepage(struct page *page, unsigned long offset)
 {
 	struct inode *inode;
 	struct ceph_inode_info *ci;
@@ -147,9 +146,9 @@ static void ceph_invalidatepage(struct page *page, unsigned int offset,
 	inode = page->mapping->host;
 	ci = ceph_inode(inode);
 
-	if (offset != 0 || length != PAGE_SIZE) {
-		dout("%p invalidatepage %p idx %lu partial dirty page %u~%u\n",
-		     inode, page, page->index, offset, length);
+	if (offset != 0) {
+		dout("%p invalidatepage %p idx %lu partial dirty page %lu\n",
+		     inode, page, page->index, offset);
 		return;
 	}
 
@@ -613,7 +612,7 @@ static int writepage_nounlock(struct page *page, struct writeback_control *wbc)
 	/* is this a partial page at end of file? */
 	if (page_off >= ceph_wbc.i_size) {
 		dout("%p page eof %llu\n", page, ceph_wbc.i_size);
-		page->mapping->a_ops->invalidatepage(page, 0, PAGE_SIZE);
+		page->mapping->a_ops->invalidatepage(page, 0);
 		return 0;
 	}
 
@@ -759,7 +758,7 @@ static void writepages_finish(struct ceph_osd_request *req)
 		dout("writepages_finish %p wrote %llu bytes cleaned %d pages\n",
 		     inode, osd_data->length, rc >= 0 ? num_pages : 0);
 
-		release_pages(osd_data->pages, num_pages);
+		release_pages(osd_data->pages, num_pages, false);
 	}
 
 	ceph_put_wrbuffer_cap_refs(ci, total_pages, snapc);
@@ -809,7 +808,7 @@ static int ceph_writepages_start(struct address_space *mapping,
 	if (fsc->mount_options->wsize < wsize)
 		wsize = fsc->mount_options->wsize;
 
-	pagevec_init(&pvec);
+	pagevec_init(&pvec, 0);
 
 	start_index = wbc->range_cyclic ? mapping->writeback_index : 0;
 	index = start_index;
@@ -867,10 +866,15 @@ retry:
 		max_pages = wsize >> PAGE_SHIFT;
 
 get_more_pages:
-		pvec_pages = pagevec_lookup_range_nr_tag(&pvec, mapping, &index,
-						end, PAGECACHE_TAG_DIRTY,
-						max_pages - locked_pages);
-		dout("pagevec_lookup_range_tag got %d\n", pvec_pages);
+		pvec_pages = min_t(unsigned, PAGEVEC_SIZE,
+				   max_pages - locked_pages);
+		if (end - index < (u64)(pvec_pages - 1))
+			pvec_pages = (unsigned)(end - index) + 1;
+
+		pvec_pages = pagevec_lookup_tag(&pvec, mapping, &index,
+						PAGECACHE_TAG_DIRTY,
+						pvec_pages);
+		dout("pagevec_lookup_tag got %d\n", pvec_pages);
 		if (!pvec_pages && !locked_pages)
 			break;
 		for (i = 0; i < pvec_pages && locked_pages < max_pages; i++) {
@@ -906,8 +910,7 @@ get_more_pages:
 				if ((ceph_wbc.size_stable ||
 				    page_offset(page) >= i_size_read(inode)) &&
 				    clear_page_dirty_for_io(page))
-					mapping->a_ops->invalidatepage(page,
-								0, PAGE_SIZE);
+					mapping->a_ops->invalidatepage(page, 0);
 				unlock_page(page);
 				continue;
 			}
@@ -1162,7 +1165,8 @@ release_pvec_pages:
 			index = 0;
 			while ((index <= end) &&
 			       (nr = pagevec_lookup_tag(&pvec, mapping, &index,
-						PAGECACHE_TAG_WRITEBACK))) {
+							PAGECACHE_TAG_WRITEBACK,
+							PAGEVEC_SIZE))) {
 				for (i = 0; i < nr; i++) {
 					page = pvec.pages[i];
 					if (page_snap_context(page) != snapc)
@@ -1386,7 +1390,9 @@ out:
  * intercept O_DIRECT reads and writes early, this function should
  * never get called.
  */
-static ssize_t ceph_direct_io(struct kiocb *iocb, struct iov_iter *iter)
+static ssize_t ceph_direct_io(int rw, struct kiocb *iocb,
+			      const struct iovec *iov,
+			      loff_t pos, unsigned long nr_segs)
 {
 	WARN_ON(1);
 	return -EINVAL;
@@ -1420,9 +1426,8 @@ static void ceph_restore_sigs(sigset_t *oldset)
 /*
  * vm ops
  */
-static vm_fault_t ceph_filemap_fault(struct vm_fault *vmf)
+static int ceph_filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
-	struct vm_area_struct *vma = vmf->vma;
 	struct inode *inode = file_inode(vma->vm_file);
 	struct ceph_inode_info *ci = ceph_inode(inode);
 	struct ceph_file_info *fi = vma->vm_file->private_data;
@@ -1430,7 +1435,7 @@ static vm_fault_t ceph_filemap_fault(struct vm_fault *vmf)
 	loff_t off = vmf->pgoff << PAGE_SHIFT;
 	int want, got, err;
 	sigset_t oldset;
-	vm_fault_t ret = VM_FAULT_SIGBUS;
+	int ret = VM_FAULT_SIGBUS;
 
 	ceph_block_sigs(&oldset);
 
@@ -1454,7 +1459,7 @@ static vm_fault_t ceph_filemap_fault(struct vm_fault *vmf)
 	    ci->i_inline_version == CEPH_INLINE_NONE) {
 		CEPH_DEFINE_RW_CONTEXT(rw_ctx, got);
 		ceph_add_rw_context(fi, &rw_ctx);
-		ret = filemap_fault(vmf);
+		ret = filemap_fault(vma, vmf);
 		ceph_del_rw_context(fi, &rw_ctx);
 		dout("filemap_fault %p %llu~%zd drop cap refs %s ret %x\n",
 			inode, off, (size_t)PAGE_SIZE,
@@ -1512,9 +1517,8 @@ out_restore:
 /*
  * Reuse write_begin here for simplicity.
  */
-static vm_fault_t ceph_page_mkwrite(struct vm_fault *vmf)
+static int ceph_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
-	struct vm_area_struct *vma = vmf->vma;
 	struct inode *inode = file_inode(vma->vm_file);
 	struct ceph_inode_info *ci = ceph_inode(inode);
 	struct ceph_file_info *fi = vma->vm_file->private_data;
@@ -1525,7 +1529,7 @@ static vm_fault_t ceph_page_mkwrite(struct vm_fault *vmf)
 	size_t len;
 	int want, got, err;
 	sigset_t oldset;
-	vm_fault_t ret = VM_FAULT_SIGBUS;
+	int ret = VM_FAULT_SIGBUS;
 
 	prealloc_cf = ceph_alloc_cap_flush();
 	if (!prealloc_cf)
@@ -1793,6 +1797,7 @@ out:
 static const struct vm_operations_struct ceph_vmops = {
 	.fault		= ceph_filemap_fault,
 	.page_mkwrite	= ceph_page_mkwrite,
+	.remap_pages	= generic_file_remap_pages,
 };
 
 int ceph_mmap(struct file *file, struct vm_area_struct *vma)

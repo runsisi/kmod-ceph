@@ -38,7 +38,7 @@ obj-m := libceph.o
 
 deps-y := ../../mm/util.o ../../kernel/time/time.o \
 	../../fs/fs_parser.o ../../fs/fs_context.o \
-	../../lib/refcount.o
+	../../lib/refcount.o ../../lib/iov_iter.o
 
 libceph-y := ceph_common.o messenger.o msgpool.o buffer.o pagelist.o \
 	mon_client.o decode.o \

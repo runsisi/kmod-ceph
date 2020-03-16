@@ -117,6 +117,8 @@ struct ceph_fs_client {
 	mempool_t *wb_pagevec_pool;
 	atomic_long_t writeback_count;
 
+	struct backing_dev_info *backing_dev_info;
+
 	struct workqueue_struct *inode_wq;
 	struct workqueue_struct *cap_wq;
 
@@ -851,7 +853,7 @@ static inline int default_congestion_kb(void)
 	 * This allows larger machines to have larger/more transfers.
 	 * Limit the default to 256M
 	 */
-	congestion_kb = (16*int_sqrt(totalram_pages())) << (PAGE_SHIFT-10);
+	congestion_kb = (16*int_sqrt(totalram_pages)) << (PAGE_SHIFT-10);
 	if (congestion_kb > 256*1024)
 		congestion_kb = 256*1024;
 
@@ -903,7 +905,6 @@ extern const struct inode_operations ceph_file_iops;
 
 extern struct inode *ceph_alloc_inode(struct super_block *sb);
 extern void ceph_evict_inode(struct inode *inode);
-extern void ceph_free_inode(struct inode *inode);
 
 extern struct inode *ceph_get_inode(struct super_block *sb,
 				    struct ceph_vino vino);
@@ -937,8 +938,8 @@ static inline int ceph_do_getattr(struct inode *inode, int mask, bool force)
 extern int ceph_permission(struct inode *inode, int mask);
 extern int __ceph_setattr(struct inode *inode, struct iattr *attr);
 extern int ceph_setattr(struct dentry *dentry, struct iattr *attr);
-extern int ceph_getattr(const struct path *path, struct kstat *stat,
-			u32 request_mask, unsigned int flags);
+extern int ceph_getattr(struct vfsmount *mnt, struct dentry *dentry,
+			struct kstat *stat);
 
 /* xattr.c */
 int __ceph_setxattr(struct inode *, const char *, const void *, size_t, int);
@@ -995,10 +996,14 @@ static inline void ceph_security_invalidate_secctx(struct inode *inode)
 void ceph_release_acl_sec_ctx(struct ceph_acl_sec_ctx *as_ctx);
 
 /* acl.c */
+extern const struct xattr_handler ceph_xattr_acl_access_handler;
+extern const struct xattr_handler ceph_xattr_acl_default_handler;
+
 #ifdef CONFIG_CEPH_FS_POSIX_ACL
 
 struct posix_acl *ceph_get_acl(struct inode *, int);
-int ceph_set_acl(struct inode *inode, struct posix_acl *acl, int type);
+//int ceph_set_acl(struct inode *inode, struct posix_acl *acl, int type);
+int ceph_acl_chmod(struct inode *, umode_t mode);
 int ceph_pre_init_acls(struct inode *dir, umode_t *mode,
 		       struct ceph_acl_sec_ctx *as_ctx);
 void ceph_init_inode_acls(struct inode *inode,
@@ -1012,7 +1017,7 @@ static inline void ceph_forget_all_cached_acls(struct inode *inode)
 #else
 
 #define ceph_get_acl NULL
-#define ceph_set_acl NULL
+//#define ceph_set_acl NULL
 
 static inline int ceph_pre_init_acls(struct inode *dir, umode_t *mode,
 				     struct ceph_acl_sec_ctx *as_ctx)
@@ -1100,7 +1105,8 @@ extern const struct file_operations ceph_file_fops;
 extern int ceph_renew_caps(struct inode *inode);
 extern int ceph_open(struct inode *inode, struct file *file);
 extern int ceph_atomic_open(struct inode *dir, struct dentry *dentry,
-			    struct file *file, unsigned flags, umode_t mode);
+			    struct file *file, unsigned flags, umode_t mode,
+			    int *opened);
 extern int ceph_release(struct inode *inode, struct file *filp);
 extern void ceph_fill_inline_data(struct inode *inode, struct page *locked_page,
 				  char *data, size_t len);
@@ -1125,6 +1131,13 @@ extern void ceph_invalidate_dentry_lease(struct dentry *dentry);
 extern int ceph_trim_dentries(struct ceph_mds_client *mdsc);
 extern unsigned ceph_dentry_hash(struct inode *dir, struct dentry *dn);
 extern void ceph_readdir_cache_release(struct ceph_readdir_cache_control *ctl);
+
+/*
+ * our d_ops vary depending on whether the inode is live,
+ * snapshotted (read-only), or a virtual ".snap" directory.
+ */
+int ceph_init_dentry(struct dentry *dentry);
+
 
 /* ioctl.c */
 extern long ceph_ioctl(struct file *file, unsigned int cmd, unsigned long arg);

@@ -35,19 +35,33 @@ static int __dir_lease_try_check(const struct dentry *dentry);
 /*
  * Initialize ceph dentry state.
  */
-static int ceph_d_init(struct dentry *dentry)
+int ceph_init_dentry(struct dentry *dentry)
 {
 	struct ceph_dentry_info *di;
+
+	if (dentry->d_fsdata)
+		return 0;
 
 	di = kmem_cache_zalloc(ceph_dentry_cachep, GFP_KERNEL);
 	if (!di)
 		return -ENOMEM;          /* oh well */
 
+	spin_lock(&dentry->d_lock);
+	if (dentry->d_fsdata) {
+		/* lost a race */
+		kmem_cache_free(ceph_dentry_cachep, di);
+		goto out_unlock;
+	}
+
 	di->dentry = dentry;
 	di->lease_session = NULL;
 	di->time = jiffies;
+	/* avoid reordering d_fsdata setup so that the check above is safe */
+	smp_mb();
 	dentry->d_fsdata = di;
 	INIT_LIST_HEAD(&di->lease_list);
+out_unlock:
+	spin_unlock(&dentry->d_lock);
 	return 0;
 }
 
@@ -300,7 +314,21 @@ static bool need_send_readdir(struct ceph_dir_file_info *dfi, loff_t pos)
 		return dfi->frag != fpos_frag(pos);
 }
 
-static int ceph_readdir(struct file *file, struct dir_context *ctx)
+static int _ceph_readdir(struct file *file, struct dir_context *ctx);
+
+static int ceph_readdir(struct file *file, void *dirent, filldir_t filldir)
+{
+	struct dir_context sctx, *ctx = &sctx;
+	int res = -ENOTDIR;
+
+	ctx->actor = filldir;
+	ctx->pos = file->f_pos;
+	res = _ceph_readdir(file, ctx);
+	file->f_pos = ctx->pos;
+	return res;
+}
+
+static int _ceph_readdir(struct file *file, struct dir_context *ctx)
 {
 	struct ceph_dir_file_info *dfi = file->private_data;
 	struct inode *inode = file_inode(file);
@@ -746,6 +774,10 @@ static struct dentry *ceph_lookup(struct inode *dir, struct dentry *dentry,
 	if (dentry->d_name.len > NAME_MAX)
 		return ERR_PTR(-ENAMETOOLONG);
 
+	err = ceph_init_dentry(dentry);
+	if (err < 0)
+		return ERR_PTR(err);
+
 	/* can we conclude ENOENT locally? */
 	if (d_really_is_negative(dentry)) {
 		struct ceph_inode_info *ci = ceph_inode(dir);
@@ -1080,8 +1112,8 @@ out:
 }
 
 static int ceph_rename(struct inode *old_dir, struct dentry *old_dentry,
-		       struct inode *new_dir, struct dentry *new_dentry,
-		       unsigned int flags)
+		       struct inode *new_dir, struct dentry *new_dentry/*,
+		       unsigned int flags*/)
 {
 	struct ceph_fs_client *fsc = ceph_sb_to_client(old_dir->i_sb);
 	struct ceph_mds_client *mdsc = fsc->mdsc;
@@ -1089,8 +1121,8 @@ static int ceph_rename(struct inode *old_dir, struct dentry *old_dentry,
 	int op = CEPH_MDS_OP_RENAME;
 	int err;
 
-	if (flags)
-		return -EINVAL;
+//	if (flags)
+//		return -EINVAL;
 
 	if (ceph_snap(old_dir) != ceph_snap(new_dir))
 		return -EXDEV;
@@ -1763,7 +1795,7 @@ static ssize_t ceph_read_dir(struct file *file, char __user *buf, size_t size,
 				ci->i_rfiles,
 				ci->i_rsubdirs,
 				ci->i_rbytes,
-				ci->i_rctime.tv_sec,
+				(time64_t)ci->i_rctime.tv_sec,
 				ci->i_rctime.tv_nsec);
 	}
 
@@ -1804,7 +1836,7 @@ unsigned ceph_dentry_hash(struct inode *dir, struct dentry *dn)
 
 const struct file_operations ceph_dir_fops = {
 	.read = ceph_read_dir,
-	.iterate = ceph_readdir,
+	.readdir = ceph_readdir,
 	.llseek = ceph_dir_llseek,
 	.open = ceph_open,
 	.release = ceph_release,
@@ -1816,7 +1848,7 @@ const struct file_operations ceph_dir_fops = {
 };
 
 const struct file_operations ceph_snapdir_fops = {
-	.iterate = ceph_readdir,
+	.readdir = ceph_readdir,
 	.llseek = ceph_dir_llseek,
 	.open = ceph_open,
 	.release = ceph_release,
@@ -1829,7 +1861,7 @@ const struct inode_operations ceph_dir_iops = {
 	.setattr = ceph_setattr,
 	.listxattr = ceph_listxattr,
 	.get_acl = ceph_get_acl,
-	.set_acl = ceph_set_acl,
+//	.set_acl = ceph_set_acl,
 	.mknod = ceph_mknod,
 	.symlink = ceph_symlink,
 	.mkdir = ceph_mkdir,
@@ -1855,5 +1887,5 @@ const struct dentry_operations ceph_dentry_ops = {
 	.d_delete = ceph_d_delete,
 	.d_release = ceph_d_release,
 	.d_prune = ceph_d_prune,
-	.d_init = ceph_d_init,
+//	.d_init = ceph_d_init,
 };

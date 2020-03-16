@@ -42,6 +42,18 @@ static void ceph_put_super(struct super_block *s)
 
 	dout("put_super\n");
 	ceph_mdsc_close_sessions(fsc->mdsc);
+
+	/*
+	 * ensure we release the bdi before put_anon_super releases
+	 * the device name.
+	 */
+	if (s->s_bdi == fsc->backing_dev_info) {
+		bdi_unregister(fsc->backing_dev_info);
+		s->s_bdi = NULL;
+		fsc->backing_dev_info = NULL;
+	}
+
+	return;
 }
 
 static int ceph_statfs(struct dentry *dentry, struct kstatfs *buf)
@@ -827,7 +839,6 @@ static void ceph_umount_begin(struct super_block *sb)
 
 static const struct super_operations ceph_super_ops = {
 	.alloc_inode	= ceph_alloc_inode,
-	.free_inode	= ceph_free_inode,
 	.write_inode    = ceph_write_inode,
 	.drop_inode	= generic_delete_inode,
 	.evict_inode	= ceph_evict_inode,
@@ -878,6 +889,7 @@ static struct dentry *open_root_dentry(struct ceph_fs_client *fsc,
 			root = ERR_PTR(-ENOMEM);
 			goto out;
 		}
+		ceph_init_dentry(root);
 		dout("open_root_inode success, root dentry is %p\n", root);
 	} else {
 		root = ERR_PTR(err);
@@ -949,6 +961,7 @@ static int ceph_set_super(struct super_block *s, struct fs_context *fc)
 	s->s_maxbytes = MAX_LFS_FILESIZE;
 
 	s->s_xattr = ceph_xattr_handlers;
+	s->s_fs_info = fsc;
 	fsc->sb = s;
 	fsc->max_file_size = 1ULL << 40; /* temp value until we get mdsmap */
 
@@ -957,12 +970,18 @@ static int ceph_set_super(struct super_block *s, struct fs_context *fc)
 	s->s_export_op = &ceph_export_ops;
 
 	s->s_time_gran = 1;
-	s->s_time_min = 0;
-	s->s_time_max = U32_MAX;
+//	s->s_time_min = 0;
+//	s->s_time_max = U32_MAX;
 
 	ret = set_anon_super_fc(s, fc);
 	if (ret != 0)
-		fsc->sb = NULL;
+		goto fail;
+
+	return ret;
+
+fail:
+	s->s_fs_info = NULL;
+	fsc->sb = NULL;
 	return ret;
 }
 
@@ -1001,20 +1020,56 @@ static atomic_long_t bdi_seq = ATOMIC_LONG_INIT(0);
 
 static int ceph_setup_bdi(struct super_block *sb, struct ceph_fs_client *fsc)
 {
+	struct backing_dev_info *bdi;
 	int err;
 
-	err = super_setup_bdi_name(sb, "ceph-%ld",
+	bdi = bdi_alloc(GFP_KERNEL);
+	if (!bdi)
+		return -ENOMEM;
+
+	bdi->name = (char*)sb->s_type->name;
+
+	err = bdi_register(bdi, NULL, "ceph-%ld",
 				   atomic_long_inc_return(&bdi_seq));
-	if (err)
+	if (err) {
+		bdi_destroy(bdi);
+		kfree(bdi);
 		return err;
+	}
+
+	sb->s_bdi = fsc->backing_dev_info = bdi;
 
 	/* set ra_pages based on rasize mount option? */
 	sb->s_bdi->ra_pages = fsc->mount_options->rasize >> PAGE_SHIFT;
 
 	/* set io_pages based on max osd read size */
-	sb->s_bdi->io_pages = fsc->mount_options->rsize >> PAGE_SHIFT;
+//	sb->s_bdi->io_pages = fsc->mount_options->rsize >> PAGE_SHIFT;
 
 	return 0;
+}
+
+static int ceph_init_fs_context(struct fs_context *fc);
+static int ceph_get_tree(struct fs_context *fc);
+static void ceph_free_fc(struct fs_context *fc);
+
+static struct dentry *ceph_mount(struct file_system_type *fs_type,
+		       int flags, const char *dev_name, void *data)
+{
+	struct fs_context fctx, *fc = &fctx;
+	int err;
+
+	err = ceph_init_fs_context(fc);
+	if (err < 0)
+		return ERR_PTR(err);
+
+	fc->fs_type = fs_type;
+
+	err = generic_parse_monolithic(fc, data);
+	if (!err)
+		err = ceph_get_tree(fc);
+
+	ceph_free_fc(fc);
+	return ERR_PTR(err);
 }
 
 static int ceph_get_tree(struct fs_context *fc)
@@ -1029,8 +1084,8 @@ static int ceph_get_tree(struct fs_context *fc)
 
 	dout("ceph_get_tree\n");
 
-	if (!fc->source)
-		return invalfc(fc, "No source");
+//	if (!fc->source)
+//		return invalfc(fc, "No source");
 
 	/* create client (which we may/may not use) */
 	fsc = create_fs_client(pctx->opts, pctx->copts);
@@ -1049,7 +1104,10 @@ static int ceph_get_tree(struct fs_context *fc)
 		compare_super = NULL;
 
 	fc->s_fs_info = fsc;
-	sb = sget_fc(fc, compare_super, ceph_set_super);
+	sb = sget(fc->fs_type,
+			  (int (*)(struct super_block *,void *))compare_super,
+			  (int (*)(struct super_block *,void *))ceph_set_super,
+			  fc->sb_flags, fc);
 	fc->s_fs_info = NULL;
 	if (IS_ERR(sb)) {
 		err = PTR_ERR(sb);
@@ -1193,7 +1251,7 @@ static void ceph_kill_sb(struct super_block *s)
 static struct file_system_type ceph_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "ceph",
-	.init_fs_context = ceph_init_fs_context,
+	.mount		= ceph_mount,
 	.kill_sb	= ceph_kill_sb,
 	.fs_flags	= FS_RENAME_DOES_D_MOVE,
 };
