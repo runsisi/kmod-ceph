@@ -34,6 +34,6 @@ else
 
 # Called from kernel build system -- just declare the module(s).
 
-obj-y := net/ceph/ drivers/block/ #fs/ceph/
+obj-y := net/ceph/ drivers/block/ fs/ceph/
 
 endif
