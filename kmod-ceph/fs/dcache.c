@@ -19,19 +19,6 @@
 #include <linux/string.h>
 #include <linux/mm.h>
 #include <linux/fs.h>
-#include <linux/fscrypt.h>
-#include <linux/fsnotify.h>
-#include <linux/slab.h>
-#include <linux/init.h>
-#include <linux/hash.h>
-#include <linux/cache.h>
-#include <linux/export.h>
-#include <linux/security.h>
-#include <linux/seqlock.h>
-#include <linux/memblock.h>
-#include <linux/bit_spinlock.h>
-#include <linux/rculist_bl.h>
-#include <linux/list_lru.h>
 
 /**
  * d_obtain_root - find or allocate a dentry for a given inode
