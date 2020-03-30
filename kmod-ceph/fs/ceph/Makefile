@@ -38,8 +38,8 @@ else
 obj-m := ceph.o
 
 deps-y := ../../mm/util.o ../../fs/fs_parser.o ../../fs/fs_context.o \
-	../../fs/inode.o ../../fs/ioctl.o \
-	../../lib/errseq.o ../../mm/backing-dev.o
+	../../fs/inode.o ../../fs/dcache.o ../../fs/ioctl.o ../../fs/posix_acl.o \
+	../../lib/errseq.o ../../lib/iov_iter.o ../../mm/backing-dev.o
 
 ceph-y := super.o inode.o dir.o file.o locks.o addr.o ioctl.o \
 	export.o caps.o snap.o xattr.o quota.o io.o \
