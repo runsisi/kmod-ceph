@@ -21,23 +21,7 @@
  *  Heavily rewritten for 'one fs - one tree' dcache architecture. AV, Mar 2000
  */
 
-#include <linux/export.h>
-#include <linux/slab.h>
-#include <linux/blkdev.h>
-#include <linux/mount.h>
-#include <linux/security.h>
-#include <linux/writeback.h>		/* for the emergency remount stuff */
-#include <linux/idr.h>
-#include <linux/mutex.h>
-#include <linux/backing-dev.h>
-#include <linux/rculist_bl.h>
-#include <linux/cleancache.h>
-#include <linux/fscrypt.h>
-#include <linux/fsnotify.h>
-#include <linux/lockdep.h>
-#include <linux/user_namespace.h>
-#include <linux/fs_context.h>
-#include <uapi/linux/mount.h>
+#include <linux/fs.h>
 
 int set_anon_super_fc(struct super_block *sb, struct fs_context *fc)
 {
