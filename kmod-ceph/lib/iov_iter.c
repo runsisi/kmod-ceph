@@ -201,17 +201,19 @@ int iov_iter_npages(const struct iov_iter *i, int maxpages)
 	if (!size)
 		return 0;
 
-	size_t skip = i->iov_offset;
-	const struct iovec *iov;
-	struct iovec v;
-	iterate_iovec(i, size, v, iov, skip, ({
-		unsigned long p = (unsigned long)v.iov_base;
-		npages += DIV_ROUND_UP(p + v.iov_len, PAGE_SIZE)
-			- p / PAGE_SIZE;
-		if (npages >= maxpages)
-			return maxpages;
-	0;})
-	)
+	{
+		size_t skip = i->iov_offset;
+		const struct iovec *iov;
+		struct iovec v;
+		iterate_iovec(i, size, v, iov, skip, ({
+			unsigned long p = (unsigned long)v.iov_base;
+			npages += DIV_ROUND_UP(p + v.iov_len, PAGE_SIZE)
+				- p / PAGE_SIZE;
+			if (npages >= maxpages)
+				return maxpages;
+		0;})
+		)
+	}
 	return npages;
 }
 //EXPORT_SYMBOL(iov_iter_npages);
