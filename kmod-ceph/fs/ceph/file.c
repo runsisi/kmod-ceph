@@ -1445,7 +1445,7 @@ retry_snap:
 		ceph_start_io_write(inode);
 
 	/* We can write back this queue in page reclaim */
-	current->backing_dev_info = inode_to_bdi(inode);
+	current->backing_dev_info = file->f_mapping->backing_dev_info;
 
 	if (iocb->ki_filp->f_flags & O_APPEND) {
 		err = ceph_do_getattr(inode, CEPH_STAT_CAP_SIZE, false);

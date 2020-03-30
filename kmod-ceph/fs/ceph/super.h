@@ -117,7 +117,7 @@ struct ceph_fs_client {
 	mempool_t *wb_pagevec_pool;
 	atomic_long_t writeback_count;
 
-	struct backing_dev_info *backing_dev_info;
+	struct backing_dev_info backing_dev_info;
 
 	struct workqueue_struct *inode_wq;
 	struct workqueue_struct *cap_wq;

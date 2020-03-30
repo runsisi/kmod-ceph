@@ -47,10 +47,9 @@ static void ceph_put_super(struct super_block *s)
 	 * ensure we release the bdi before put_anon_super releases
 	 * the device name.
 	 */
-	if (s->s_bdi == fsc->backing_dev_info) {
-		bdi_unregister(fsc->backing_dev_info);
+	if (s->s_bdi == &fsc->backing_dev_info) {
+		bdi_unregister(&fsc->backing_dev_info);
 		s->s_bdi = NULL;
-		fsc->backing_dev_info = NULL;
 	}
 
 	return;
@@ -672,6 +671,10 @@ static struct ceph_fs_client *create_fs_client(struct ceph_mount_options *fsopt,
 
 	atomic_long_set(&fsc->writeback_count, 0);
 
+	err = bdi_init(&fsc->backing_dev_info);
+	if (err < 0)
+		goto fail_client;
+
 	err = -ENOMEM;
 	/*
 	 * The number of concurrent works can be high but they don't need
@@ -679,7 +682,7 @@ static struct ceph_fs_client *create_fs_client(struct ceph_mount_options *fsopt,
 	 */
 	fsc->inode_wq = alloc_workqueue("ceph-inode", WQ_UNBOUND, 0);
 	if (!fsc->inode_wq)
-		goto fail_client;
+		goto fail_bdi;
 	fsc->cap_wq = alloc_workqueue("ceph-cap", 0, 1);
 	if (!fsc->cap_wq)
 		goto fail_inode_wq;
@@ -698,6 +701,8 @@ fail_cap_wq:
 	destroy_workqueue(fsc->cap_wq);
 fail_inode_wq:
 	destroy_workqueue(fsc->inode_wq);
+fail_bdi:
+	bdi_destroy(&fsc->backing_dev_info);
 fail_client:
 	ceph_destroy_client(fsc->client);
 fail:
@@ -721,6 +726,8 @@ static void destroy_fs_client(struct ceph_fs_client *fsc)
 	ceph_mdsc_destroy(fsc);
 	destroy_workqueue(fsc->inode_wq);
 	destroy_workqueue(fsc->cap_wq);
+
+	bdi_destroy(&fsc->backing_dev_info);
 
 	mempool_destroy(fsc->wb_pagevec_pool);
 
@@ -1020,24 +1027,12 @@ static atomic_long_t bdi_seq = ATOMIC_LONG_INIT(0);
 
 static int ceph_setup_bdi(struct super_block *sb, struct ceph_fs_client *fsc)
 {
-	struct backing_dev_info *bdi;
 	int err;
 
-	bdi = bdi_alloc(GFP_KERNEL);
-	if (!bdi)
-		return -ENOMEM;
-
-	bdi->name = (char*)sb->s_type->name;
-
-	err = bdi_register(bdi, NULL, "ceph-%ld",
-				   atomic_long_inc_return(&bdi_seq));
-	if (err) {
-		bdi_destroy(bdi);
-		kfree(bdi);
-		return err;
-	}
-
-	sb->s_bdi = fsc->backing_dev_info = bdi;
+	err = bdi_register(&fsc->backing_dev_info, NULL, "ceph-%ld",
+			   atomic_long_inc_return(&bdi_seq));
+	if (!err)
+		sb->s_bdi = &fsc->backing_dev_info;
 
 	/* set ra_pages based on rasize mount option? */
 	sb->s_bdi->ra_pages = fsc->mount_options->rasize >> PAGE_SHIFT;
@@ -1045,7 +1040,7 @@ static int ceph_setup_bdi(struct super_block *sb, struct ceph_fs_client *fsc)
 	/* set io_pages based on max osd read size */
 //	sb->s_bdi->io_pages = fsc->mount_options->rsize >> PAGE_SHIFT;
 
-	return 0;
+	return err;
 }
 
 static int ceph_init_fs_context(struct fs_context *fc);
