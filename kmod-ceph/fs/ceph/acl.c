@@ -256,14 +256,6 @@ void ceph_init_inode_acls(struct inode *inode, struct ceph_acl_sec_ctx *as_ctx)
 	ceph_set_cached_acl(inode, ACL_TYPE_DEFAULT, as_ctx->default_acl);
 }
 
-void ceph_release_acls_info(struct ceph_acls_info *info)
-{
-	posix_acl_release(info->acl);
-	posix_acl_release(info->default_acl);
-	if (info->pagelist)
-		ceph_pagelist_release(info->pagelist);
-}
-
 int ceph_acl_chmod(struct inode *inode, umode_t mode)
 {
 	struct posix_acl *acl;
