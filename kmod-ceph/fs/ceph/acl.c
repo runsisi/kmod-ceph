@@ -167,7 +167,7 @@ int ceph_pre_init_acls(struct inode *dir, umode_t *mode,
 	void *tmp_buf = NULL;
 	int err;
 
-	err = posix_acl_create(dir, mode, &default_acl, &acl);
+	err = kc_posix_acl_create(dir, mode, &default_acl, &acl);
 	if (err)
 		return err;
 
