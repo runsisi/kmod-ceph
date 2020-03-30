@@ -335,7 +335,7 @@ static int ceph_xattr_acl_set(struct dentry *dentry, const char *name,
 		}
 	}
 
-	ret = ceph_set_acl(dentry, dentry->d_inode, acl, type);
+	ret = ceph_set_acl(d_inode(dentry), acl, type);
 
 out_release:
 	posix_acl_release(acl);
