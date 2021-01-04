@@ -5,18 +5,18 @@
 
 ifeq ($(KERNELRELEASE),)
 
-    # KVERSION should be set in the environment if this
-    # build is not for the currently running kernel.
-    KVERSION ?= $(shell uname -r)
+# KVERSION should be set in the environment if this
+# build is not for the currently running kernel.
+KVERSION ?= $(shell uname -r)
 
-    # BUILD_DIR should be set in the environment if a
-    # subdirectory of /lib/modules/ is not appropriate.
-    BUILD_DIR ?= /lib/modules/${KVERSION}/build
+# BUILD_DIR should be set in the environment if a
+# subdirectory of /lib/modules/ is not appropriate.
+BUILD_DIR ?= /lib/modules/${KVERSION}/build
 
-    PWD := $(shell pwd)
+PWD := $(shell pwd)
 
-    export NOSTDINC_FLAGS
-    NOSTDINC_FLAGS += -I$(PWD)/../../include
+export NOSTDINC_FLAGS
+NOSTDINC_FLAGS += -I$(PWD)/../../include
 
 modules:
 	echo $(PWD)
